@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints/
+
+# venv/poetry
+.venv/
+poetry.lock
+
+# data & outputs
+data/*
+!data/.gitkeep
+
+# OS/editor
+.DS_Store
+.vscode/
