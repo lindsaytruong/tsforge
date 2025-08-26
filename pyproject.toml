@@ -5,6 +5,10 @@ description = "TSForge + course: build powerful forecasts in Python"
 authors = ["Jeff Tackes <tackes@gmail.com>"]
 packages = [{ include = "tsforge", from = "src" }]
 
+include = [
+    "src/tsforge/datasets/*.csv",
+]
+
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 pandas = "^2.2"
@@ -13,6 +17,7 @@ scikit-learn = "^1.5"
 scipy = "^1.13"
 matplotlib = "^3.9"
 plotly = "^5.23"
+pytimetk = "^1.2.5"
 pydantic = "^2.8"
 typer = "^0.12"            # CLI (optional)
 holidays = "^0.58"
