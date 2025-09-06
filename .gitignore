@@ -1,16 +1,21 @@
 # Python
 __pycache__/
 *.py[cod]
-*.ipynb_checkpoints/
+*.pyo
+*.pyd
+*.so
+*.egg-info/
 
-# venv/poetry
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual env
 .venv/
-poetry.lock
+.env/
 
-# data & outputs
+# Data
 data/*
 !data/.gitkeep
 
-# OS/editor
-.DS_Store
+# VS Code
 .vscode/
