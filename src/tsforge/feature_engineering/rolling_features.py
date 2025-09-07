@@ -1,5 +1,4 @@
 import pandas as pd
-from tsforge._utils.call import call_method
 
 def add_rolling_features(
     obj: pd.DataFrame,

@@ -1,6 +1,6 @@
-
-import pytimetk as tk
 import pandas as pd
+import numpy as np
+from utilsforecast.preprocessing import fill_gaps
 
 def pad_by_time(
     df: pd.DataFrame,
@@ -13,58 +13,29 @@ def pad_by_time(
     end_date=None,
     fill_static: list[str] | None = None
 ) -> pd.DataFrame:
-    """
-    Pad a panel of time series to complete frequency using pytimetk.pad_by_time,
-    with options to fill values and static categorical fields.
+    """Pad a panel of time series using Nixtla's fill_gaps, with static column filling."""
 
-    Parameters
-    ----------
-    df : DataFrame with [id_col, date_col, value_col, ...].
-    id_col : str
-        Series identifier column.
-    date_col : str
-        Date column.
-    value_col : str, optional
-        Numeric value column.
-    freq : str
-        Pandas offset alias ('D','W','M').
-    fill : int, float, str, or None
-        Fill method for value_col. (0, 'ffill', 'bfill', None)
-    start_date, end_date : str or pd.Timestamp, optional
-        Boundaries for padding.
-    fill_static : list of str, optional
-        List of static columns to fill with first value from each id.
-
-    Returns
-    -------
-    DataFrame with padded time series.
-    """
-    # pad the main series
-    df_padded = (
-        df.groupby(id_col, group_keys=False)
-          .pad_by_time(
-              date_column=date_col,
-              freq=freq,
-              start_date=start_date,
-              end_date=end_date
-          )
+    # use Nixtla to pad missing dates
+    df_padded = fill_gaps(
+        df[[id_col, date_col] + ([value_col] if value_col else []) + (fill_static or [])],
+        id_col=id_col,
+        time_col=date_col,
+        freq=freq
     )
 
-    # fill value_col if requested
+    # fill the value column
     if fill is not None and value_col is not None:
         if fill in ("ffill", "bfill"):
-            df_padded[value_col] = df_padded[value_col].fillna(method=fill)
+            df_padded[value_col] = df_padded.groupby(id_col)[value_col].fillna(method=fill)
         else:
             df_padded[value_col] = df_padded[value_col].fillna(fill)
 
-    # fill static categorical fields if requested
+    # fill static columns
     if fill_static:
         for col in fill_static:
-            if col in df.columns:
-                df_padded[col] = (
-                    df_padded.groupby(id_col)[col]
-                    .transform(lambda x: x.fillna(x.dropna().iloc[0] if len(x.dropna()) else np.nan))
-                )
+            df_padded[col] = (
+                df_padded.groupby(id_col)[col]
+                .transform(lambda x: x.fillna(x.dropna().iloc[0] if x.notna().any() else np.nan))
+            )
 
     return df_padded
-

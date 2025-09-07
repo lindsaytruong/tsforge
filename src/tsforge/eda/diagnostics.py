@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from tsforge.feature_engineering import summarize_by_time  # use your wrapper
-from tsforge._utils.call import call_method
 
 from scipy.stats import skew, kurtosis
 from statsmodels.tsa.stattools import adfuller
@@ -143,74 +142,5 @@ def summary_diagnostics(
 
     return pd.DataFrame(results)
 
-def profile_card(
-    df, id_val, id_col="id", date_col="date", value_col="sales",
-    diag=None, freq=None
-):
-    """Generate a 1-page profile for one series, with optional resampling by freq."""
-    g = df[df[id_col] == id_val].sort_values(date_col)
-
-    # --- Resample if freq provided ---
-    if freq is not None:
-        from tsforge.feature_engineering import summarize_by_time
-        g = summarize_by_time(
-            g, date_col=date_col, value_col=value_col, freq=freq, agg_func="sum"
-        )
-
-    # --- Diagnostics ---
-    if diag is None:
-        from tsforge.eda import summary_diagnostics
-        diag = summary_diagnostics(
-            df, id_col=id_col, date_col=date_col, value_col=value_col, freq=freq
-        )
-    row = diag[diag[id_col] == id_val].iloc[0]
-
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-    # 1. Time series plot
-    axes[0,0].plot(g[date_col], g[value_col], label="sales", color="blue")
-    axes[0,0].set_title(f"Series {id_val} — Time Plot ({freq or 'raw'})")
-
-    # 2. Histogram
-    sns.histplot(g[value_col], bins=30, ax=axes[0,1], color="blue")
-    axes[0,1].set_title(f"Distribution of Sales ({freq or 'raw'})")
-
-    # 3. Stats table
-    stats_text = (
-        f"n_obs: {row['n_obs']}\n"
-        f"n_missing: {row['n_missing']}\n"
-        f"mean: {row['mean_value']:.2f}\n"
-        f"cv: {row['cv_value']:.2f}\n"
-        f"pct_zeros: {row['pct_zeros']:.1f}%\n"
-        f"max_zero_run: {row['max_zero_run']}\n"
-        f"outliers: {row['n_outliers']}\n"
-        f"trend_strength: {row['trend_strength']:.2f}\n"
-        f"adf_pval: {row['adf_pval']:.3f}"
-    )
-    axes[1,0].axis("off")
-    axes[1,0].text(0, 0.5, stats_text, fontsize=12, va="center", family="monospace")
-    axes[1,0].set_title("Summary Stats")
-
-    # 4. Boxplot
-    sns.boxplot(x=g[value_col], ax=axes[1,1], color="blue")
-    axes[1,1].set_title(f"Boxplot of Sales ({freq or 'raw'})")
-
-    plt.tight_layout()
-    plt.show()
 
 
-def plot_time_series(obj: pd.DataFrame, *, date_col: str, value_col: str, **kwargs):
-    """Wrapper for pytimetk.plot_time_series (tsforge naming)."""
-    return call_method(obj, "plot_time_series", date_column=date_col, value_column=value_col, **kwargs)
-
-def plot_seasonal_diagnostics(obj: pd.DataFrame, *, date_col: str, value_col: str, **kwargs):
-    """Wrapper for pytimetk.plot_seasonal_diagnostics (tsforge naming)."""
-    return call_method(obj, "plot_seasonal_diagnostics", date_column=date_col, value_column=value_col, **kwargs)
-
-def plot_acf_diagnostics(obj: pd.DataFrame, *, date_col: str, value_col: str, **kwargs):
-    """Wrapper for pytimetk.plot_acf_diagnostics (tsforge naming)."""
-    return call_method(obj, "plot_acf_diagnostics", date_column=date_col, value_column=value_col, **kwargs)
-
-def plot_anomaly_diagnostics(obj: pd.DataFrame, *, date_col: str, value_col: str, **kwargs):
-    """Wrapper for pytimetk.plot_anomaly_diagnostics (tsforge naming)."""
-    return call_method(obj, "plot_anomaly_diagnostics", date_column=date_col, value_column=value_col, **kwargs)
