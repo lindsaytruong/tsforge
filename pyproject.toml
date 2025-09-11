@@ -69,5 +69,7 @@ ignore_missing_imports = true
 [tool.poetry.scripts]
 tsf = "tsforge.cli.main:app"   # `tsf` command if you enable Typer CLI
 
+[tool.setuptools.package-data]
+tsforge = ["assets/css/*.css"]
 
 #  poetry show --tree

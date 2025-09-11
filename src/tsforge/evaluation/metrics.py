@@ -108,6 +108,73 @@ def score_all(y, yhat, y_naive=None, as_dataframe=False):
         return pd.DataFrame([scores])
     return scores
 
+# --- Interval metrics ---
+
+def coverage_score(y, lo, hi):
+    """Regression Coverage Score (RCS)."""
+    return np.mean((y >= lo) & (y <= hi))
+
+def mean_width(y, lo, hi):
+    """Regression Mean Width Score (RMWS)."""
+    return np.mean(hi - lo)
+
+def winkler_score(y, lo, hi, alpha):
+    """
+    Mean Winkler Interval Score (MWI).
+    alpha = significance (e.g. 0.05 for 95% interval).
+    """
+    score = (hi - lo) \
+        + (2/alpha) * (lo - y) * (y < lo) \
+        + (2/alpha) * (y - hi) * (y > hi)
+    return np.mean(score)
+
+def cwc(y, lo, hi, alpha, eta=50):
+    """
+    Coverage Width Criterion (CWC).
+    Balances coverage with width.
+    eta = penalty strength (default 50, as in Khosravi 2011).
+    """
+    cov = coverage_score(y, lo, hi)
+    width = mean_width(y, lo, hi)
+    return (1 - width) * np.exp(-eta * (cov - (1 - alpha))**2)
+
+def score_intervals(y: np.ndarray, lo: np.ndarray, hi: np.ndarray, level: int, eta: int = 50) -> dict:
+    """
+    Compute interval metrics for a given prediction interval.
+    
+    Args:
+        y: truth values
+        lo: lower bound predictions
+        hi: upper bound predictions
+        level: nominal coverage level (e.g. 80, 95)
+        eta: penalty parameter for CWC (default=50, Khosravi 2011)
+    
+    Returns:
+        dict with coverage, width, Winkler/interval score, and CWC
+    """
+    # Basic stats
+    coverage = np.mean((y >= lo) & (y <= hi))
+    width = np.mean(hi - lo)
+
+    # alpha = significance level (e.g. 0.05 for 95% interval)
+    alpha = 1 - level / 100
+
+    # Winkler / Interval Score (Gneiting & Raftery 2007)
+    winkler = np.mean(
+        (hi - lo) +
+        (2/alpha) * (lo - y) * (y < lo) +
+        (2/alpha) * (y - hi) * (y > hi)
+    )
+
+    # Coverage Width Criterion (CWC, Khosravi 2011)
+    cwc = (1 - width) * np.exp(-eta * (coverage - (1 - alpha))**2)
+
+    return {
+        f"coverage_{level}": coverage,
+        f"width_{level}": width,
+        f"winkler_{level}": winkler,
+        f"cwc_{level}": cwc,
+    }
 # Working Example
 # y = [100, 120, 130, 110]
 # yhat = [90, 125, 128, 115]
