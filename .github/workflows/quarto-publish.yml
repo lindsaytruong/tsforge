@@ -19,7 +19,7 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: latest
+          version: pre-release # or remove this line entirely to get the latest stable
 
       - name: Render Quarto project
         run: |
