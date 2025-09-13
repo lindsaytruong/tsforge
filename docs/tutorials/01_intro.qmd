@@ -1,0 +1,19 @@
+---
+title: "Getting Started with tsforge"
+---
+
+# Getting Started
+
+Here’s a quick demo:
+
+```{python}
+import matplotlib.pyplot as plt
+
+sales = [50, 70, 60, 90, 85, 100]
+months = range(1, 7)
+
+plt.plot(months, sales, marker="o")
+plt.title("Monthly Sales Trend")
+plt.xlabel("Month")
+plt.ylabel("Sales")
+plt.show()

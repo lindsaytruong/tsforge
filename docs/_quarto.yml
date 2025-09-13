@@ -1,0 +1,42 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "tsforge"
+
+  navbar:
+    logo: images/forecast_academy_logo_official.png
+    logo-alt: "tsforge logo"
+    left:
+      - href: index.qmd
+        text: Home
+      - text: Tutorials
+        menu:
+          - href: tutorials/01_intro.qmd
+            text: Getting Started
+          - href: tutorials/02_features.qmd
+            text: Feature Engineering
+    right:
+      - icon: github
+        href: https://github.com/your-username/tsforge
+        aria-label: GitHub
+
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - index.qmd
+      - section: "Tutorials"
+        contents:
+          - tutorials/01_intro.qmd
+          - tutorials/02_features.qmd
+
+format:
+  html:
+    theme:
+      light: flatly
+      dark: slate
+    toc: true
+    code-copy: true
+    css: styles.css
