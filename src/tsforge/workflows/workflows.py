@@ -66,20 +66,17 @@ def make_mlf_workflow(name, models, lags,
                       recipe=None,
                       freq="D",
                       with_intervals=False,
-                      intervals_method="conformal_error",
-                      intervals_h=None,   # 👈 new argument
+                      intervals_method="conformal_distribution",  # ← match toy
+                      intervals_h=None,
+                      intervals_windows=5,                         # ← new, match toy
                       **params):
-    """
-    MLForecast workflow. If with_intervals=True, attach PredictionIntervals,
-    but don't pass it to MLForecast constructor.
-    """
     pi = None
     if with_intervals:
         from mlforecast.utils import PredictionIntervals
         if intervals_h is None:
             raise ValueError("You must provide intervals_h when with_intervals=True")
         pi = PredictionIntervals(
-            n_windows=2,
+            n_windows=intervals_windows,
             h=intervals_h,
             method=intervals_method
         )
@@ -92,7 +89,7 @@ def make_mlf_workflow(name, models, lags,
         "date_features": date_features,
         "static_features": static_features,
         "recipe": recipe,
-        "prediction_intervals": pi,   # 👈 stored separately
+        "prediction_intervals": pi,
         "params": {
             "models": models,
             "freq": freq,

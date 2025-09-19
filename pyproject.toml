@@ -12,18 +12,20 @@ include = [
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 pandas = "^2.2.3"
-numpy = "^2.1.2"
+numpy = "<2.1"
 scikit-learn = "^1.5.2"
 scipy = "^1.14.1"
 statsmodels = "^0.14.3"
 matplotlib = "^3.9.2"
 seaborn = "^0.13.2"
 plotly = "^5.24.1"
-
+datasetsforecast = { version = "^0.0.8", optional = true }
 pydantic = "^2.9.2"
 typer = "^0.12.5"
 rich = "^13.9.4"
 holidays = "^0.58"
+numba = "==0.60.0"
+llvmlite = "==0.43.0"
 
 # Nixtla stack (latest stable as of today)
 statsforecast = "1.7.5"
@@ -43,6 +45,7 @@ joblib = "^1.4.2"
 [tool.poetry.extras]
 cli = ["typer", "rich"]
 docs = ["mkdocs", "mkdocs-material", "mkdocstrings"]
+teaching = ["datasetsforecast"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
