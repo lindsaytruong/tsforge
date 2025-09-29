@@ -1,67 +1,6 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
 from typing import Callable, Union, List, Optional
-
-# ---------------------------------------------------------------------
-# Shared Palette & Style
-# ---------------------------------------------------------------------
-PALETTE = ["#1f77b4", "#9467bd", "#17becf", "#ff7f0e", "#2ca02c", "#d62728"]
-HIGHLIGHT = "#e45756"
-
-
-def _apply_tsforge_style(fig, engine: str = "plotly"):
-    """Apply a clean, professional style to tsforge plots."""
-    if engine == "plotly":
-        fig.update_layout(
-            template="plotly_white",
-            title_x=0.5,
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            font=dict(family="Inter, Segoe UI, Helvetica", size=14, color="#333"),
-            margin=dict(l=50, r=30, t=60, b=40),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom", y=1.05,
-                xanchor="right", x=1,
-                bgcolor="rgba(255,255,255,0.6)",
-                bordercolor="rgba(0,0,0,0)"
-            ),
-            hovermode="x unified",
-        )
-        fig.update_xaxes(
-            showline=True, linewidth=1, linecolor="#333",
-            gridcolor="rgba(200,200,200,0.4)", tickfont=dict(size=12, color="#333")
-        )
-        fig.update_yaxes(
-            showline=True, linewidth=1, linecolor="#333",
-            gridcolor="rgba(200,200,200,0.4)", tickfont=dict(size=12, color="#333")
-        )
-        return fig
-
-    elif engine == "matplotlib":
-        plt.style.use("seaborn-v0_8-whitegrid")
-        plt.rcParams.update({
-            "font.family": "Inter, Segoe UI, Helvetica",
-            "axes.facecolor": "white",
-            "axes.edgecolor": "#333",
-            "axes.labelcolor": "#333",
-            "axes.titlesize": 14,
-            "axes.labelsize": 12,
-            "axes.spines.top": False,
-            "axes.spines.right": False,
-            "legend.frameon": False,
-            "legend.loc": "upper right",
-            "grid.color": "0.85",
-            "grid.linestyle": ":",
-            "lines.linewidth": 2.0,
-        })
-        return fig
-
-    else:
-        raise ValueError("engine must be 'plotly' or 'matplotlib'")
+import pandas as pd
+from tsforge.plots.style import _apply_tsforge_style, PALETTE, HIGHLIGHT
 
 
 # ---------------------------------------------------------------------
@@ -85,18 +24,24 @@ def plot_timeseries(
     """
     Plot multiple time series with optional grouping, smoothing, resampling.
     """
-
+    # lazy imports
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import plotly.express as px
+    import plotly.graph_objects as go
+    
     df = df.copy()
 
     # Handle group_col
     if group_col:
         if isinstance(group_col, str):
             group_keys = [group_col, date_col]
-            df = df.groupby(group_keys)[value_col].agg(agg).reset_index()
+            df = df.groupby(group_keys, observed=True)[value_col].agg(agg).reset_index()
             id_col = group_col
         else:
             group_keys = group_col + [date_col]
-            df = df.groupby(group_keys)[value_col].agg(agg).reset_index()
+            df = df.groupby(group_keys, observed=True)[value_col].agg(agg).reset_index()
             df["_group_id"] = df[group_col].astype(str).agg("|".join, axis=1)
             id_col = "_group_id"
 
@@ -112,25 +57,34 @@ def plot_timeseries(
     if freq is not None:
         df = (
             df.set_index(date_col)
-              .groupby(id_col)[value_col]
+              .groupby(id_col,observed=True)[value_col]
               .resample(freq).agg(agg)
               .reset_index()
         )
 
     # Pick IDs
-    unique_ids = df[id_col].unique()
+    unique_ids = df[id_col].dropna().unique().tolist()
+
     if ids is None:
-        n_series = min(max_ids, len(unique_ids))
+        n_series = min(6, len(unique_ids))   # default sample size
         ids = pd.Series(unique_ids).sample(n_series, random_state=42).tolist()
+    elif isinstance(ids, int):
+        n_series = min(ids, len(unique_ids))
+        ids = pd.Series(unique_ids).sample(n_series, random_state=42).tolist()
+    elif isinstance(ids, str):
+        ids = [ids]
+        n_series = 1
     else:
+        ids = list(ids)
         n_series = len(ids)
+
     df_sub = df[df[id_col].isin(ids)].copy()
 
     # ✅ Fixed smoother (only within each series, only on valid values)
     if smooth_window and smooth_window > 1:
         df_sub = df_sub.sort_values([id_col, date_col])
         df_sub["_smooth"] = (
-            df_sub.groupby(id_col, group_keys=False)[value_col]
+            df_sub.groupby(id_col, group_keys=False, observed=True)[value_col]
                   .apply(lambda x: x.where(x.notna())
                                      .rolling(smooth_window, min_periods=1)
                                      .mean())
