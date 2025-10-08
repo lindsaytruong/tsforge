@@ -1,14 +1,9 @@
 """
-MLForecast-specific wrappers and advanced feature engineering.
-Focuses on features that work best with MLForecast or have special handling.
-
-Note: Many of these features have native MLForecast equivalents:
 - For lags: Use MLForecast(lags=[1, 7, 14])
 - For rolling features: Use lag_transforms with RollingMean, RollingStd, etc.
 - For expanding features: Use lag_transforms with ExpandingMean, ExpandingStd
 - For date features: Use date_features=['dayofweek', 'month', ...]
 
-These Recipe wrappers are for preprocessing or features not covered by MLForecast.
 """
 from __future__ import annotations
 from typing import Sequence, Callable, Union, List, Optional, Dict, Any, Tuple
