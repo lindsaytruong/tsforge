@@ -1,8 +1,6 @@
 """
 Categorical Encoders for Nixtla MLForecast - Hybrid Pattern
 
-Uses FACTORY PATTERN for simple encoders, CLASSES for stateful ones.
-
 Factory Functions (Stateless):
 - as_category: Convert to pandas category
 - one_hot: One-hot encoding
@@ -53,7 +51,7 @@ def _cols_present(df: pd.DataFrame, cols: Sequence[str]) -> List[str]:
 
 
 # ============================================================================
-# FACTORY PATTERN: Simple Stateless Encoders
+# Simple Stateless Encoders
 # ============================================================================
 
 def as_category(cols: Sequence[str]) -> Step:
@@ -456,9 +454,6 @@ class TargetMeanEncoder(BaseEncoder):
 class TimeAwareTargetEncoder(BaseEncoder):
     """
     Optimized time-aware encoder using vectorized operations.
-    
-    ~10x faster than the iterative version, but still slower than regular encoding.
-    Uses groupby and merge operations instead of row-by-row iteration.
     
     Parameters are the same as TimeAwareTargetEncoder.
     """
