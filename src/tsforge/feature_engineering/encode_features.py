@@ -1,5 +1,5 @@
 """
-Categorical Encoders for Nixtla MLForecast - Hybrid Pattern
+Encoding Methods
 
 Factory Functions (Stateless):
 - as_category: Convert to pandas category
