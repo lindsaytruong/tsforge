@@ -12,7 +12,9 @@ from window_ops.shift import shift_array
 
 ##### NIXTLA TS FEATURES EXTENSIONS #####
 def ADI(x, freq: int):
-    return {"adi": _intervals(x).mean()}
+    values = np.asarray(x, dtype=np.float64).copy()
+    intervals = _intervals(values)
+    return {"adi": np.nanmean(intervals)}
 
 
 def permutation_entropy(x, freq: int):
