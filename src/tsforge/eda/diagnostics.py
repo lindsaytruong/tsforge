@@ -1,12 +1,79 @@
-import pandas as pd
 import numpy as np
-from scipy.stats import skew
+import pandas as pd
+import scipy.stats as st
+from tsfeatures import *
+
+from .ts_features_extension import (
+    ADI,
+    MI_top_k_lags,
+    MI_top_k_lags_indices,
+    hurst_exp_dfa,
+    hyndman_forecastability,
+    longest_zero_streak,
+    lya_exp,
+    monthly_MASE_score,
+    number_of_leading_zeros,
+    number_of_trailing_zeros,
+    overdispersion,
+    pct_zeros,
+    permutation_entropy,
+    quarterly_MASE_score,
+    yearly_MASE_score,
+)
+
+
+def pct_missing_dates(x):
+    freq = pd.infer_freq(x)
+    if not freq:
+        return np.nan
+    expected_idx = pd.date_range(start=x.min(), end=x.max(), freq=freq)
+    return (len(expected_idx) - len(x)) / len(expected_idx) * 100
+
+
+BASE_SET = [
+    # BASE TSFEATURES
+    acf_features,
+    arch_stat,
+    crossing_points,
+    entropy,
+    flat_spots,
+    heterogeneity,
+    holt_parameters,
+    lumpiness,
+    nonlinearity,
+    pacf_features,
+    stl_features,
+    stability,
+    statistics,
+    hw_parameters,
+    unitroot_kpss,
+    unitroot_pp,
+    series_length,
+    # NEW FEATURES
+    ADI,  # average interval duration
+    hurst_exp_dfa,  # hurst exponent of DFA
+    lya_exp,  # lyapunov exponent
+    longest_zero_streak,  # longest streak of consecutive zeros
+    number_of_leading_zeros,  # number of leading zeros
+    number_of_trailing_zeros,  # number of trailing zeros
+    hyndman_forecastability,  # hyndman forecastability
+    monthly_MASE_score,  # monthly MASE score
+    yearly_MASE_score,  # yearly MASE score
+    quarterly_MASE_score,  # quarterly MASE score
+    overdispersion,  # overdispersion
+    pct_zeros,  # percentage of zeros in the series, it was included in the original function
+    MI_top_k_lags,  # SUM(top 5 MI scores of predictive lags) / SUM(all MI scores)
+    MI_top_k_lags_indices,  # top 5 predictive lags sorted by MI
+    permutation_entropy,  # normalized permutation entropy
+]
+
 
 def summary_diagnostics(
     df: pd.DataFrame,
     id_col: str,
     date_col: str,
     value_col: str,
+    freq: int,
 ) -> pd.DataFrame:
     """
     Profile time series data by ID.
@@ -30,12 +97,9 @@ def summary_diagnostics(
         One row per series with the following diagnostics:
 
         - id_col : Identifier of the series.
-        - start_date : Earliest timestamp in the series.
+        - start_candate : Earliest timestamp in the series.
         - end_date : Latest timestamp in the series.
         - n_obs : Number of observed (non-NA) values in the series.
-        - freq : Inferred time series frequency (e.g., "D", "W", "M").
-        - n_expected : Number of observations expected between start_date
-          and end_date if the series were perfectly regular.
         - is_regular : Boolean flag, True if the series has exactly n_expected
           unique timestamps, False otherwise.
         - pct_missing : Percentage of expected timestamps that are missing.
@@ -45,95 +109,30 @@ def summary_diagnostics(
         - skewness : Skew of the value distribution; positive = right-tailed,
           negative = left-tailed.
         - pct_zeros : Percent of observations equal to zero (measure of intermittency).
-        - pct_outliers : Percent of observations flagged as outliers (z-score > 3).
-        - trend_strength : R² from a simple linear fit, indicating how much
-          of the variation is explained by a trend (0 = no trend, 1 = strong trend).
     """
 
+    col_mapper = {id_col: "unique_id", date_col: "ds", value_col: "y"}
+    reverse_col_mapper = {v: k for k, v in col_mapper.items()}
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col])
 
-    results = []
+    base_feats = df.groupby(id_col, as_index=False).agg(
+        start_date=(date_col, "min"),
+        end_date=(date_col, "max"),
+        pct_missing=(date_col, pct_missing_dates),
+        kurtosis=(value_col, st.kurtosis),
+        skewness=(value_col, st.skew),
+    )
 
-    for key, g in df.groupby(id_col):
-        g = g.sort_values(date_col)
-        values = g[value_col].dropna()
+    renamed_df = df.rename(columns=col_mapper)
+    tsfeatures_df = tsfeatures(
+        ts=renamed_df,
+        freq=freq,
+        features=BASE_SET,
+    ).rename(columns=reverse_col_mapper)
 
-        # Coverage
-        start_date = g[date_col].min()
-        end_date = g[date_col].max()
-        n_obs = len(values)
-
-        # Infer frequency (with fallback)
-        try:
-            freq = pd.infer_freq(g[date_col])
-        except Exception:
-            freq = None
-
-        if not freq and len(g) > 1:
-            diffs = g[date_col].diff().dropna().dt.days
-            if len(diffs) > 0:
-                mode = diffs.mode().iloc[0]
-                freq = f"{mode}D"
-
-        # Regularity / missingness
-        if freq:
-            expected_idx = pd.date_range(start=start_date, end=end_date, freq=freq)
-            n_expected = len(expected_idx)
-            is_regular = len(g[date_col].unique()) == n_expected
-            pct_missing = (n_expected - n_obs) / n_expected * 100
-        else:
-            n_expected = np.nan
-            is_regular = np.nan
-            pct_missing = np.nan
-
-        # Value stats
-        if n_obs > 0:
-            mean_value = values.mean()
-            sd_value = values.std()
-            cv_value = sd_value / mean_value if mean_value != 0 else np.nan
-            skewness = skew(values) if sd_value > 0 else np.nan
-        else:
-            mean_value = sd_value = cv_value = skewness = np.nan
-
-        # Intermittency
-        n_zeros = (values == 0).sum()
-        pct_zeros = n_zeros / n_obs * 100 if n_obs else np.nan
-
-        # Outliers (z > 3)
-        if n_obs > 1 and sd_value > 0:
-            zscores = (values - mean_value) / sd_value
-            pct_outliers = (np.abs(zscores) > 3).mean() * 100
-        else:
-            pct_outliers = np.nan
-
-        # Trend strength (R² of linear fit)
-        if n_obs > 1 and sd_value > 0:
-            t = np.arange(n_obs)
-            coeffs = np.polyfit(t, values, 1)
-            fit = np.polyval(coeffs, t)
-            ss_res = np.sum((values - fit) ** 2)
-            ss_tot = np.sum((values - mean_value) ** 2)
-            trend_strength = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
-        else:
-            trend_strength = np.nan
-
-        results.append({
-            id_col: key,
-            "start_date": start_date,
-            "end_date": end_date,
-            "n_obs": n_obs,
-            "freq": freq,
-            "n_expected": n_expected,
-            "is_regular": is_regular,
-            "pct_missing": pct_missing,
-            "mean_value": mean_value,
-            "sd_value": sd_value,
-            "cv_value": cv_value,
-            "skewness": skewness,
-            "pct_zeros": pct_zeros,
-            "pct_outliers": pct_outliers,
-            "trend_strength": trend_strength,
-        })
-
-    return pd.DataFrame(results)
+    return base_feats.merge(
+        tsfeatures_df,
+        on=id_col,
+        how="left",
+    )
