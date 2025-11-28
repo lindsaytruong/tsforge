@@ -32,6 +32,7 @@ statsforecast = "1.7.5"
 mlforecast = "0.13.4"
 neuralforecast = "1.7.2"
 utilsforecast = "0.1.12"
+tsfeatures = "^0.5.0"
 
 # ML regressors
 lightgbm = "^4.5.0"
