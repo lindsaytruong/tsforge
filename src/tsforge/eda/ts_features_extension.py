@@ -7,7 +7,18 @@ import numpy as np
 from sklearn.feature_selection import mutual_info_regression
 from statsforecast.models import _intervals
 from statsmodels.tsa.seasonal import STL
-from window_ops.shift import shift_array
+
+# windows_ops not a PYPI library..
+#from window_ops.shift import shift_array
+
+# recreating shift_array function here.
+def shift_array(x, lag):
+    x = np.asarray(x)
+    if lag > 0:
+        return np.concatenate([np.full(lag, np.nan), x[:-lag]])
+    elif lag < 0:
+        return np.concatenate([x[-lag:], np.full(-lag, np.nan)])
+    return x.copy()
 
 
 ##### NIXTLA TS FEATURES EXTENSIONS #####
