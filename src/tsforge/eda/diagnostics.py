@@ -1,139 +1,222 @@
-import pandas as pd
 import numpy as np
-from scipy.stats import skew
+import pandas as pd
+from tsfeatures import *
 
-def summary_diagnostics(
+from .ts_features_extension import (
+    ADI,
+    MI_top_k_lags,
+    MI_top_k_lags_indices,
+    hurst_exp_dfa,
+    hyndman_forecastability,
+    longest_zero_streak,
+    lya_exp,
+    monthly_MASE_score,
+    number_of_leading_zeros,
+    number_of_trailing_zeros,
+    overdispersion,
+    pct_zeros,
+    permutation_entropy,
+    quarterly_MASE_score,
+    yearly_MASE_score,
+)
+
+
+def pct_missing_dates(x):
+    freq = pd.infer_freq(x)
+    if not freq:
+        return np.nan
+    expected_idx = pd.date_range(start=x.min(), end=x.max(), freq=freq)
+    return (len(expected_idx) - len(x)) / len(expected_idx) * 100
+
+
+TSFORGE_FEATURES = [
+    # BASE TSFEATURES
+    acf_features,
+    arch_stat,
+    crossing_points,
+    entropy,
+    flat_spots,
+    heterogeneity,
+    holt_parameters,
+    lumpiness,
+    nonlinearity,
+    pacf_features,
+    stl_features,
+    stability,
+    statistics,
+    hw_parameters,
+    unitroot_kpss,
+    unitroot_pp,
+    series_length,
+    # NEW FEATURES
+    ADI,  # average interval duration
+    hurst_exp_dfa,  # hurst exponent of DFA
+    lya_exp,  # lyapunov exponent
+    longest_zero_streak,  # longest streak of consecutive zeros
+    number_of_leading_zeros,  # number of leading zeros
+    number_of_trailing_zeros,  # number of trailing zeros
+    hyndman_forecastability,  # hyndman forecastability
+    monthly_MASE_score,  # monthly MASE score
+    yearly_MASE_score,  # yearly MASE score
+    quarterly_MASE_score,  # quarterly MASE score
+    overdispersion,  # overdispersion
+    pct_zeros,  # percentage of zeros in the series, it was included in the original function
+    MI_top_k_lags,  # SUM(top 5 MI scores of predictive lags) / SUM(all MI scores)
+    MI_top_k_lags_indices,  # top 5 predictive lags sorted by MI
+    permutation_entropy,  # normalized permutation entropy
+]
+
+
+def infer_freq_multi_id(df, id_col, date_col):
+    df = df.copy()
+    df[date_col] = pd.to_datetime(df[date_col])
+    sub = df.loc[df[id_col] == df[id_col].sample(1).values[0]]
+
+    try:
+        return pd.infer_freq(sub[date_col])
+    except Exception as e:
+        print(e)
+        return np.nan
+
+
+def hierarchical_tsfeatures(
     df: pd.DataFrame,
     id_col: str,
     date_col: str,
-    value_col: str,
+    target_col: str,
+    hierarchy: list,
+    features: list,
+    freq: int,
 ) -> pd.DataFrame:
     """
-    Profile time series data by ID.
-    Inspired by R timetk::tk_summary_diagnostics, slimmed down
-    for practical forecasting use.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input dataframe with id, date, and value columns.
-    id_col : str
-        Column with unique series identifier.
-    date_col : str
-        Datetime column.
-    value_col : str
-        Target variable column.
-
-    Returns
-    -------
-    pd.DataFrame
-        One row per series with the following diagnostics:
-
-        - id_col : Identifier of the series.
-        - start_date : Earliest timestamp in the series.
-        - end_date : Latest timestamp in the series.
-        - n_obs : Number of observed (non-NA) values in the series.
-        - freq : Inferred time series frequency (e.g., "D", "W", "M").
-        - n_expected : Number of observations expected between start_date
-          and end_date if the series were perfectly regular.
-        - is_regular : Boolean flag, True if the series has exactly n_expected
-          unique timestamps, False otherwise.
-        - pct_missing : Percentage of expected timestamps that are missing.
-        - mean_value : Mean of the observed target values.
-        - sd_value : Standard deviation of the observed target values.
-        - cv_value : Coefficient of variation (std ÷ mean), a measure of relative volatility.
-        - skewness : Skew of the value distribution; positive = right-tailed,
-          negative = left-tailed.
-        - pct_zeros : Percent of observations equal to zero (measure of intermittency).
-        - pct_outliers : Percent of observations flagged as outliers (z-score > 3).
-        - trend_strength : R² from a simple linear fit, indicating how much
-          of the variation is explained by a trend (0 = no trend, 1 = strong trend).
+    A wrapper for tsfeatures that groups by id and applies tsfeatures to each group in a given hierarchy!
     """
 
+    levels = list(set(hierarchy + [id_col]))
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col])
 
-    results = []
+    pandas_freq = infer_freq_multi_id(df, id_col, date_col)
 
-    for key, g in df.groupby(id_col):
-        g = g.sort_values(date_col)
-        values = g[value_col].dropna()
+    dfs = []
+    for level in levels:
+        hier_df = (
+            df.groupby(level).resample(pandas_freq, on=date_col)[[target_col]].sum().reset_index()
+        )
 
-        # Coverage
-        start_date = g[date_col].min()
-        end_date = g[date_col].max()
-        n_obs = len(values)
+        col_mapper = {level: "unique_id", date_col: "ds", target_col: "y"}
+        reverse_mapper = {v: k for k, v in col_mapper.items()}
+        hier_df.rename(columns=col_mapper, inplace=True)
 
-        # Infer frequency (with fallback)
-        try:
-            freq = pd.infer_freq(g[date_col])
-        except Exception:
-            freq = None
+        ts_feats = tsfeatures(
+            ts=hier_df,
+            freq=freq,
+            scale=False,
+            features=features,
+        )
+        dfs.append(ts_feats.rename(columns=reverse_mapper).assign(hier_id=level))
 
-        if not freq and len(g) > 1:
-            diffs = g[date_col].diff().dropna().dt.days
-            if len(diffs) > 0:
-                mode = diffs.mode().iloc[0]
-                freq = f"{mode}D"
+    agg_df = pd.concat(dfs)
+    for level in levels:
+        if level != id_col:
+            agg_df["hier_id"] = agg_df[id_col].fillna(agg_df[level])
 
-        # Regularity / missingness
-        if freq:
-            expected_idx = pd.date_range(start=start_date, end=end_date, freq=freq)
-            n_expected = len(expected_idx)
-            is_regular = len(g[date_col].unique()) == n_expected
-            pct_missing = (n_expected - n_obs) / n_expected * 100
-        else:
-            n_expected = np.nan
-            is_regular = np.nan
-            pct_missing = np.nan
+    agg_df.drop(columns=levels, inplace=True)
 
-        # Value stats
-        if n_obs > 0:
-            mean_value = values.mean()
-            sd_value = values.std()
-            cv_value = sd_value / mean_value if mean_value != 0 else np.nan
-            skewness = skew(values) if sd_value > 0 else np.nan
-        else:
-            mean_value = sd_value = cv_value = skewness = np.nan
+    columns = [
+        "hier_id",
+        "lumpiness",
+        "permutation_entropy",
+        "MI_top_k_lags",
+        "MI_top_k_lags_indices",
+        "trend_strength",
+        "seasonal_strength",
+        "adi",
+    ] + [c for c in agg_df.columns if c != "hier_id"]
 
-        # Intermittency
-        n_zeros = (values == 0).sum()
-        pct_zeros = n_zeros / n_obs * 100 if n_obs else np.nan
+    agg_df = agg_df.reindex(columns=columns)
+    return agg_df
 
-        # Outliers (z > 3)
-        if n_obs > 1 and sd_value > 0:
-            zscores = (values - mean_value) / sd_value
-            pct_outliers = (np.abs(zscores) > 3).mean() * 100
-        else:
-            pct_outliers = np.nan
 
-        # Trend strength (R² of linear fit)
-        if n_obs > 1 and sd_value > 0:
-            t = np.arange(n_obs)
-            coeffs = np.polyfit(t, values, 1)
-            fit = np.polyval(coeffs, t)
-            ss_res = np.sum((values - fit) ** 2)
-            ss_tot = np.sum((values - mean_value) ** 2)
-            trend_strength = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
-        else:
-            trend_strength = np.nan
+def datetime_diagnostics(
+    df: pd.DataFrame,
+    id_col: str,
+    date_col: str,
+    target_col: str = None,  # Optional target for seasonal analysis
+) -> pd.DataFrame:
+    """Comprehensive time series diagnostics per unique_id for forecasting.
 
-        results.append({
-            id_col: key,
-            "start_date": start_date,
-            "end_date": end_date,
-            "n_obs": n_obs,
-            "freq": freq,
-            "n_expected": n_expected,
-            "is_regular": is_regular,
-            "pct_missing": pct_missing,
-            "mean_value": mean_value,
-            "sd_value": sd_value,
-            "cv_value": cv_value,
-            "skewness": skewness,
-            "pct_zeros": pct_zeros,
-            "pct_outliers": pct_outliers,
-            "trend_strength": trend_strength,
-        })
+    Returns key information about temporal structure, gaps, and frequency patterns
+    that inform forecasting approach and data quality.
 
-    return pd.DataFrame(results)
+    If target_col is provided, also returns seasonal pattern information.
+    """
+
+    def infer_frequency(dates):
+        """Infer frequency and return as string"""
+        freq = pd.infer_freq(dates.sort_values())
+        return freq if freq else "irregular"
+
+    def count_gaps(dates):
+        """Count number of gaps in expected regular sequence"""
+        dates_sorted = dates.sort_values()
+        if len(dates_sorted) < 2:
+            return 0
+        freq = pd.infer_freq(dates_sorted)
+        if freq is None:
+            return np.nan
+        expected_range = pd.date_range(dates_sorted.min(), dates_sorted.max(), freq=freq)
+        return len(expected_range) - len(dates_sorted)
+
+    def span_days(dates):
+        """Total time span in days"""
+        return (dates.max() - dates.min()).total_seconds() / 86400
+
+    def obs_per_year(dates):
+        """Approximate observations per year"""
+        span = (dates.max() - dates.min()).total_seconds() / 86400
+        if span == 0:
+            return np.nan
+        return (len(dates) / span) * 365.25
+
+    def has_duplicates(dates):
+        """Check if there are duplicate timestamps"""
+        return dates.duplicated().any()
+
+    # Base aggregations that always run
+    base_agg = {
+        # Basic temporal boundaries
+        "start_date": (date_col, "min"),
+        "end_date": (date_col, "max"),
+        "n_obs": (date_col, "count"),
+        "span_days": (date_col, span_days),
+        # Frequency detection
+        "inferred_freq": (date_col, infer_frequency),
+        "obs_per_year": (date_col, obs_per_year),
+        # Gap analysis
+        "n_gaps": (date_col, count_gaps),
+        "pct_missing": (date_col, pct_missing_dates),
+        # Data quality flags
+        "has_duplicates": (date_col, has_duplicates),
+    }
+    result = df.groupby(id_col).agg(**base_agg)
+
+    if target_col is not None:
+
+        def _seasonal_summary(group):
+            if group.empty or group[target_col].dropna().empty:
+                return pd.Series({"peak_month": np.nan, "peak_quarter": np.nan})
+
+            month_means = group.groupby(group[date_col].dt.month)[target_col].mean()
+            quarter_means = group.groupby(group[date_col].dt.quarter)[target_col].mean()
+
+            return pd.Series(
+                {
+                    "peak_month": month_means.idxmax() if not month_means.empty else np.nan,
+                    "peak_quarter": quarter_means.idxmax() if not quarter_means.empty else np.nan,
+                }
+            )
+
+        seasonal_stats = df.groupby(id_col).apply(_seasonal_summary)
+        result = result.merge(seasonal_stats, left_index=True, right_index=True, how="left")
+    return result
