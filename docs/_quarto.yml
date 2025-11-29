@@ -15,8 +15,7 @@ website:
         menu:
           - href: tutorials/01_intro.qmd
             text: Getting Started
-          - href: tutorials/02_features.qmd
-            text: Feature Engineering
+
     right:
       - icon: github
         href: https://github.com/your-username/tsforge
@@ -30,7 +29,7 @@ website:
       - section: "Tutorials"
         contents:
           - tutorials/01_intro.qmd
-          - tutorials/02_features.qmd
+          - tutorials/plot_timeseries.qmd
 
 format:
   html:
