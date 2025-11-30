@@ -75,3 +75,7 @@ ignore_missing_imports = true
 tsf = "tsforge.cli.main:app"   # `tsf` command if you enable Typer CLI
 
 #  poetry show --tree
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
