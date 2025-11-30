@@ -16,7 +16,7 @@ It’s designed to make it easy to:
 
 ## 🔹 Tutorials
 - [Getting Started](tutorials/01_intro.qmd)  
-- [Feature Engineering](tutorials/02_features.qmd)  
+- [Feature Engineering](tutorials/plot_timeseries.qmd)  
 
 ---
 
