@@ -1,19 +1,50 @@
 ---
-title: "Getting Started with tsforge"
+title: "Getting Started"
+subtitle: "A Practical Introduction to the Forecast Academy Time-Series Toolkit"
+sidebar-title: "Getting Started"
+
+format:
+  html:
+    theme:
+      light: flatly
+      dark: slate
+    toc: true
+    toc-depth: 2
+    code-copy: true
+    link-citations: true
+
+lang: en
+date-format: long
+document-css: false
 ---
 
-# Getting Started
+# 1. Welcome to TSForge
 
-Here’s a quick demo:
+TSForge is a **modern, production-grade forecasting toolkit** designed for:
 
-```{python}
-import matplotlib.pyplot as plt
+- Professional forecasters  
+- Data science teams  
+- Enterprise forecasting systems  
+- Students learning forecasting through Forecast Academy  
 
-sales = [50, 70, 60, 90, 85, 100]
-months = range(1, 7)
+TSForge includes:
 
-plt.plot(months, sales, marker="o")
-plt.title("Monthly Sales Trend")
-plt.xlabel("Month")
-plt.ylabel("Sales")
-plt.show()
+- Cleaning & preprocessing utilities  
+- EDA & diagnostics  
+- Feature engineering  
+- Forecast evaluation  
+- **High-grade visualization tools (Plotly-based)**  
+- A consistent architecture designed for production and education  
+
+This guide helps you install TSForge, load your first dataset, and run your first visualization.
+
+---
+
+# 2. Installation
+
+`TSForge` requires **Python 3.9+**.
+
+Install from your GitHub repo (adjust if needed):
+
+```bash
+pip install -e .

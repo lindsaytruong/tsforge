@@ -1,0 +1,449 @@
+---
+title: "plot_timeseries"
+subtitle: "TSForge Tutorial — plot_timeseries() Deep Dive"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+execute:
+  enabled: true
+  echo: true
+---
+
+# 1. Introduction
+
+`plot_timeseries()` is TSForge’s **flagship visualization engine** — a modular, enterprise-grade Plotly interface that supports:
+
+- Overlay, facet, and dropdown views  
+- Hierarchical time series  
+- Global & local events  
+- Anomalies  
+- Forecasts + prediction intervals  
+- Multiple professional themes  
+- Smoothing  
+- Auto-selection of IDs when a dataset is large  
+
+This tutorial walks through the complete workflow using synthetic but realistic data.
+---
+
+# 2. Quick Start
+
+```python
+from tsforge.plots.charts import plot_timeseries
+
+fig = plot_timeseries(
+    df=df_actuals,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y"
+)
+
+fig
+```
+
+---
+
+# 3. Architecture Diagram
+
+```mermaid
+flowchart TB
+
+A[Input DataFrames] --> B[Group / Aggregate]
+B --> C[Resample]
+C --> D[Select IDs]
+D --> E[Smoothing]
+E --> F[Merge Events]
+F --> G[Normalize Anomalies]
+G --> H[Render Mode<br>overlay/facet/dropdown]
+H --> I[Theme + Styling]
+I --> J[Plotly Figure]
+```
+
+---
+
+# 4. Load Libraries
+
+```python
+import pandas as pd
+import numpy as np
+
+from tsforge.plots.charts import plot_timeseries
+from tsforge.plots.core.theme import THEMES
+```
+
+# 5. Build a Hierarhical Dataset.
+
+Most forecasting datasets include levels such as:
+- Department
+- Item
+- Store
+
+Below we construct a dataset with:
+- unique_id — BEV_1, BEV_2, SNK_1, SNK_2
+- department — BEV or SNK
+- ds — date
+- y — actual daily sales
+
+```python
+dates = pd.date_range("2022-01-01", periods=120, freq="D")
+
+departments = ["BEV", "SNK"]
+items = ["1", "2"]
+
+actuals = []
+
+for dept in departments:
+    for item in items:
+        uid = f"{dept}_{item}"
+        lam = 40 if dept == "BEV" else 25
+        y = np.random.poisson(lam=lam, size=len(dates))
+
+        df_tmp = pd.DataFrame({
+            "unique_id": uid,
+            "department": dept,
+            "ds": dates,
+            "y": y
+        })
+        actuals.append(df_tmp)
+
+df_actuals = pd.concat(actuals).reset_index(drop=True)
+df_actuals.head()
+
+```
+
+# 6. Create a Forecast Dataset
+Forecasts must match the identifiers in `df_actuals`.
+We simulate a simple uplift-based forecast with 80% and 95% prediction intervals.
+
+```python
+df_fcst = (
+    df_actuals
+    .copy()
+    .assign(
+        ds=lambda x: x["ds"] + pd.Timedelta(days=7),
+        yhat=lambda x: x["y"] * 1.05,
+        yhat_lo_80=lambda x: x["yhat"] * 0.90,
+        yhat_hi_80=lambda x: x["yhat"] * 1.10,
+        yhat_lo_95=lambda x: x["yhat"] * 0.80,
+        yhat_hi_95=lambda x: x["yhat"] * 1.20,
+    )
+)
+df_fcst.head()
+
+```
+Prediction intervals are essential for inventory safety stock, risk assessment, and replenishment planning.
+
+# 7. Global Events
+Global events apply to all series.
+
+Examples:
+- Holidays
+- Company-wide promotions
+- Weather disruptions affecting supply chain
+
+```python
+events_global = pd.DataFrame({
+    "ds": ["2022-02-14", "2022-05-30"],
+    "event": ["Valentine's Day", "Memorial Day"]
+})
+
+events_global["ds"] = pd.to_datetime(events_global["ds"])
+events_global
+
+```
+
+# 8. Local Events (Per-ID)
+Local events apply only to a specific item or department.
+
+```python
+events_local = pd.DataFrame({
+    "unique_id": ["BEV_2", "BEV_2"],
+    "ds": ["2022-03-10", "2022-06-01"],
+    "event": ["Packaging Change", "Shelf Reset"]
+})
+
+events_local["ds"] = pd.to_datetime(events_local["ds"])
+events_local
+
+```
+
+# 9. Anomalies
+An anomaly dataset can be generated from:
+- Outlier detection
+- QC rules
+- Unusually high/low sales
+
+TSForge expects:
+- unique_id
+- ds
+- flag column (default: anom_flag)
+
+```python
+anoms_df = (
+    df_actuals.sample(8)
+    .assign(anom_flag=1)
+    .loc[:, ["unique_id", "ds", "anom_flag"]]
+)
+
+anoms_df.head()
+
+```
+
+# 10. Basic Overlay Plotly
+The overlay mode plots all selected series together.
+
+```python
+fig = plot_timeseries(
+    df=df_actuals,
+    forecast=df_fcst,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    level=[80, 95],
+    events_global=events_global,
+    events_local=events_local,
+    anomalies=anoms_df,
+    mode="overlay",
+    theme="fa",
+)
+fig
+
+```
+
+# 11. Faceted Small Multiples
+Great for diagnostic inspection across many IDs.
+
+```python
+fig = plot_timeseries(
+    df=df_actuals,
+    forecast=df_fcst,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    level=[80, 95],
+    events_global=events_global,
+    events_local=events_local,
+    anomalies=anoms_df,
+    mode="facet",
+    theme="mckinsey",
+)
+fig
+
+```
+
+# 12. Dropdown Mode (Interactive Selector)
+Dropdown mode reduces visual clutter when many IDs exist.
+
+```python
+fig = plot_timeseries(
+    df=df_actuals,
+    forecast=df_fcst,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    level=[80, 95],
+    events_global=events_global,
+    events_local=events_local,
+    anomalies=anoms_df,
+    mode="dropdown",
+    theme="minimal",
+)
+fig
+
+```
+
+# 13. Styling Options
+The dark theme is optimized for:
+- Presentations
+- Videos
+- Demos
+- High-contrast environments
+
+# Plot Styling
+TSForge provides a simple, clean way to customize titles, subtitles, axis labels, and layout elements using the `style` dictionary.
+
+This allows you to override theme defaults without touching Plotly directly.
+```python
+fig = plot_timeseries(
+    df=df_actuals,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    style={
+        "title": "Demand With Forecast",
+        "subtitle": "Styled using the TSForge 'style' dictionary",
+        "x_title": "Date",
+        "y_title": "Units Sold",
+        "font_size": 14,
+        "background": "white",
+    },
+    theme="fa",
+)
+fig
+```
+
+
+## Event Styling
+
+```python
+events_config = {
+  "color": "#444",
+  "opacity": 0.85,
+  "stagger_labels": True
+}
+
+plot_timeseries(
+  df_actuals,
+  id_col="unique_id",
+  date_col="ds",
+  value_col="y",
+  events_global=events_global,
+  events_config=events_config,
+)
+```
+
+## Anomaly Styling
+```python
+plot_timeseries(
+  df_actuals,
+  id_col="unique_id",
+  date_col="ds",
+  value_col="y",
+  anomalies=anoms_df,
+  anomalies_config={
+    "color": "crimson",
+    "marker_symbol": "x",
+    "marker_size": 10
+  }
+)
+
+## Theme Styling
+```python
+fig = plot_timeseries(
+    df=df_actuals,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    events_global=events_global,
+    anomalies=anoms_df,
+    mode="overlay",
+    theme="dark",
+)
+fig
+
+```
+
+
+
+# 14. Parameter Reference
+## Core Inputs
+
+| Parameter | Description |
+|----------|-------------|
+| `df` | Input actuals DataFrame. |
+| `id_col` | Column identifying unique series (e.g., item/store). |
+| `date_col` | Timestamp column (must be coercible to datetime). |
+| `value_col` | Actual observed target column. |
+
+### Optional Inputs — Forecasts
+
+| Parameter | Description |
+|----------|-------------|
+| `forecast` | Forecast DataFrame containing `yhat` and prediction interval columns. |
+| `forecast_value_col` | Name of the point forecast column (default: `yhat`). |
+| `level` | List of uncertainty interval levels (e.g., `[80, 95]`). |
+| `lo_pattern` | Pattern for lower PI column names. |
+| `hi_pattern` | Pattern for upper PI column names. |
+
+
+## Events 
+
+| Parameter | Meaning |
+|----------|---------|
+| `events_global` | Events that apply to **all** series. |
+| `events_local` | Events tied to a specific `unique_id`. |
+| `events` | Inline event column in `df` (boolean/string). |
+| `anomalies` | Either a column name or a DataFrame of anomaly flags. |
+| `anomaly_flag_value` | Value representing anomaly when using inline flag. |
+
+## Anomalies
+| Parameter | Description |
+|----------|-------------|
+| `anomalies` | Either a column name or a DataFrame of anomaly flags. |
+| `anomaly_flag_value` | Value representing anomaly when using inline flag. |
+
+## Rendering
+
+| Parameter | Description |
+|----------|-------------|
+| `theme` | fa / mckinsey / minimal / dark |
+| `smooth_window` | Moving window smoother |
+| `style` | Title + axis labels |
+
+## Modes
+
+| Mode | Description |
+|------|-------------|
+| `overlay` | All series plotted on one set of axes. |
+| `facet` | Small multiples (one series per subplot). |
+| `dropdown` | Single view with an interactive selector. |
+
+## Themes
+
+| Theme | Description |
+|--------|-------------|
+| `fa` | Forecast Academy brand (default). |
+| `mckinsey` | Consulting-grade clean style. |
+| `minimal` | Scandinavian-style simplicity. |
+| `dark` | High-contrast dark mode optimized for demos. |
+
+
+## Styling, Themes, & Titles
+### General Styling (`style=`)
+| Key          | Description                                    |
+|--------------|------------------------------------------------|
+| `title`      | Main chart title                               |
+| `subtitle`   | Secondary subtitle shown above the plot        |
+| `x_title`    | X-axis label                                   |
+| `y_title`    | Y-axis label                                   |
+| `font_size`  | Override theme font size                       |
+| `font_family`| Override theme font                            |
+| `background` | Plot & paper background override               |
+
+### Styling Events (`events_config=`)
+You can customize event appearance:
+
+| Key              | Description                                        |
+|------------------|----------------------------------------------------|
+| `color`          | Vertical event line + label color                  |
+| `opacity`        | Transparency of vertical event lines               |
+| `stagger_labels` | Whether to stagger event labels to avoid overlap   |
+| `line_width`     | (Optional) Width of event lines                    |
+| `label_font_size`| (Optional) Font size of event labels               |
+
+
+### Styling Anomalies (`anomalies_config=`)
+Customize anomaly marker appearance:
+
+| Key             | Description                                         |
+|-----------------|-----------------------------------------------------|
+| `color`         | Marker color for anomalies                          |
+| `marker_symbol` | Plotly symbol (e.g., `x`, `circle`, `diamond`)      |
+| `marker_size`   | Marker size                                         |
+| `line_width`    | (Optional) Border width for anomaly markers         |
+| `opacity`       | (Optional) Opacity of anomaly markers               |
+
+
+# 15. Summary
+In this tutorial, you learned how to use TSForge’s plot_timeseries() to visualize:
+- Historical actuals
+- Forecasts
+- Prediction intervals
+- Global & local events
+- Anomalies
+- Multiple themes
+- Three visualization modes
+
+This function provides a **best-in-class visualization layer** for professional forecasting workflows.

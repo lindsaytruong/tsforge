@@ -94,6 +94,43 @@ THEMES = {
         "legend_position": "top right",
         "legend_font_size": 12,
     },
+    "seaborn": {
+        "font": "Arial",
+        "font_size": 13,
+        "background": "white",
+        "grid_color": "#E5E5E5",
+        "axis_color": "#4C4C4C",
+
+        # Slightly heavier lines
+        "line_width": 2.0,
+        "pi_opacity": 0.18,
+
+        # Legend
+        "legend_bg": "rgba(255,255,255,0.85)",
+        "legend_border": "rgba(200,200,200,0.3)",
+        "legend_position": "top right",
+
+        # Optional seaborn-like color palette accent
+        "accent_color": "#4C72B0",
+    },
+    "ggplot": {
+        "font": "Georgia",
+        "font_size": 13,
+        "background": "#EBEBEB",      # light grey panel
+        "grid_color": "white",        # white gridlines like ggplot
+        "axis_color": "#333333",
+
+        "line_width": 2.5,            # ggplot has strong lines
+        "pi_opacity": 0.20,
+
+        # Legend
+        "legend_bg": "rgba(245,245,245,0.9)",
+        "legend_border": "rgba(120,120,120,0.3)",
+        "legend_position": "bottom right",
+
+        # Optional ggplot-style accent
+        "accent_color": "#E24A33",
+}
 }
 
 

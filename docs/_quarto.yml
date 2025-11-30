@@ -15,10 +15,11 @@ website:
         menu:
           - href: tutorials/01_intro.qmd
             text: Getting Started
-
+          - href: tutorials/plot_timeseries.qmd
+            text: Plot Time Series  # <-- add this
     right:
       - icon: github
-        href: https://github.com/your-username/tsforge
+        href: https://github.com/forecastacademy/tsforge
         aria-label: GitHub
 
   sidebar:
