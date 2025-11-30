@@ -7,30 +7,63 @@ on:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
       pages: write
       id-token: write
 
     steps:
+      # ----------------------------------------------------
+      # 1. Check out code
+      # ----------------------------------------------------
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # ----------------------------------------------------
+      # 2. Install Python (for executing .qmd files)
+      # ----------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ----------------------------------------------------
+      # 3. Install Jupyter + nbformat + plotly + your package
+      # ----------------------------------------------------
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jupyter nbformat plotly pandas numpy
+          pip install -e .   # installs your tsforge package
+
+      # ----------------------------------------------------
+      # 4. Set up Quarto
+      # ----------------------------------------------------
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: pre-release # or remove this line entirely to get the latest stable
+          version: pre-release
 
-      - name: Render Quarto project
+      # ----------------------------------------------------
+      # 5. Render your Quarto site
+      # ----------------------------------------------------
+      - name: Render Quarto Project
         run: |
           cd docs
           quarto render
 
+      # ----------------------------------------------------
+      # 6. Upload rendered site
+      # ----------------------------------------------------
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_site
 
+      # ----------------------------------------------------
+      # 7. Deploy
+      # ----------------------------------------------------
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
