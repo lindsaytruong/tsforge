@@ -1,3 +1,9 @@
+name: Quarto Publish
+
+on:
+  push:
+    branches: [ main ]
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
@@ -17,7 +23,7 @@ jobs:
           python-version: "3.12"
 
       # ----------------------------------------------------
-      # 3. Install Python dependencies  ← THIS IS WHERE YOU UPDATE
+      # 3. Install Python dependencies
       # ----------------------------------------------------
       - name: Install Python dependencies
         run: |
