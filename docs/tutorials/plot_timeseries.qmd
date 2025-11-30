@@ -7,9 +7,13 @@ format:
     toc-depth: 3
     code-fold: true
     code-tools: true
+    embed-resources: true   # required for Plotly
 execute:
   enabled: true
   echo: true
+  warning: false
+  message: false
+jupyter: python3            # required to run Python code
 ---
 
 # 1. Introduction
@@ -28,24 +32,7 @@ execute:
 This tutorial walks through the complete workflow using synthetic but realistic data.
 ---
 
-# 2. Quick Start
-
-```python
-from tsforge.plots.charts import plot_timeseries
-
-fig = plot_timeseries(
-    df=df_actuals,
-    id_col="unique_id",
-    date_col="ds",
-    value_col="y"
-)
-
-fig
-```
-
----
-
-# 3. Architecture Diagram
+# 2. Architecture Diagram
 
 ```mermaid
 flowchart TB
@@ -63,9 +50,9 @@ I --> J[Plotly Figure]
 
 ---
 
-# 4. Load Libraries
+# 3. Load Libraries
 
-```python
+```{python}
 import pandas as pd
 import numpy as np
 
@@ -73,63 +60,141 @@ from tsforge.plots.charts import plot_timeseries
 from tsforge.plots.core.theme import THEMES
 ```
 
-# 5. Build a Hierarhical Dataset.
+# 4. Build a Hierarhical Dataset.
 
 Most forecasting datasets include levels such as:
+
 - Department
 - Item
 - Store
 
 Below we construct a dataset with:
+
 - unique_id — BEV_1, BEV_2, SNK_1, SNK_2
 - department — BEV or SNK
 - ds — date
 - y — actual daily sales
 
-```python
-dates = pd.date_range("2022-01-01", periods=120, freq="D")
+```{python}
+# For reproducibility
+rng = np.random.default_rng(42)
 
-departments = ["BEV", "SNK"]
-items = ["1", "2"]
+# -----------------------------
+# ACTUALS: df_actuals
+# -----------------------------
+dates = pd.date_range("2020-01-01", periods=90, freq="D")
+ids = ["FOODS_1", "BEV_2", "DAIRY_3"]
 
-actuals = []
+rows = []
+for uid in ids:
+    base_level = {
+        "FOODS_1": 50,
+        "BEV_2": 80,
+        "DAIRY_3": 40,
+    }[uid]
 
-for dept in departments:
-    for item in items:
-        uid = f"{dept}_{item}"
-        lam = 40 if dept == "BEV" else 25
-        y = np.random.poisson(lam=lam, size=len(dates))
+    seasonal = np.sin(np.linspace(0, 3 * np.pi, len(dates))) * 10
+    noise = rng.normal(scale=5, size=len(dates))
+    trend = np.linspace(0, 15, len(dates))
 
-        df_tmp = pd.DataFrame({
+    if uid == "DAIRY_3":
+        y = base_level + seasonal + noise              # mostly flat-ish
+    else:
+        y = base_level + seasonal + noise + trend      # trending
+
+    for d, v in zip(dates, y):
+        rows.append({
             "unique_id": uid,
-            "department": dept,
-            "ds": dates,
-            "y": y
+            "ds": d,
+            "y": float(max(v, 0.0)),   # no negatives
         })
-        actuals.append(df_tmp)
 
-df_actuals = pd.concat(actuals).reset_index(drop=True)
+df_actuals = pd.DataFrame(rows)
+df_actuals["department"] = df_actuals["unique_id"].str.split("_").str[0]
 df_actuals.head()
-
 ```
+# 5. Quick Start
+
+```{python}
+from tsforge.plots.charts import plot_timeseries
+
+fig = plot_timeseries(
+    df=df_actuals,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y"
+)
+
+fig
+```
+
+---
 
 # 6. Create a Forecast Dataset
 Forecasts must match the identifiers in `df_actuals`.
 We simulate a simple uplift-based forecast with 80% and 95% prediction intervals.
 
-```python
-df_fcst = (
-    df_actuals
-    .copy()
-    .assign(
-        ds=lambda x: x["ds"] + pd.Timedelta(days=7),
-        yhat=lambda x: x["y"] * 1.05,
-        yhat_lo_80=lambda x: x["yhat"] * 0.90,
-        yhat_hi_80=lambda x: x["yhat"] * 1.10,
-        yhat_lo_95=lambda x: x["yhat"] * 0.80,
-        yhat_hi_95=lambda x: x["yhat"] * 1.20,
-    )
-)
+```{python}
+# -----------------------------
+# FORECAST: df_fcst (single model + 80/95 PIs)
+# -----------------------------
+h = 14
+fc_dates = pd.date_range(df_actuals["ds"].max() + pd.Timedelta(days=1),
+                         periods=h, freq="D")
+
+rows = []
+for uid in ids:
+    sub = df_actuals[df_actuals["unique_id"] == uid]
+    base_last = sub["y"].iloc[-1]
+
+    seasonal = np.sin(np.linspace(0, 2 * np.pi, h)) * 8
+    noise = rng.normal(scale=3, size=h)
+    trend = np.linspace(0, 5, h)
+
+    mean = base_last + seasonal + trend
+    yhat = mean + noise
+
+    lo80 = yhat - 5
+    hi80 = yhat + 5
+    lo95 = yhat - 8
+    hi95 = yhat + 8
+
+    for d, yh, lo8, hi8, lo9, hi9 in zip(fc_dates, yhat, lo80, hi80, lo95, hi95):
+        rows.append({
+            "unique_id": uid,
+            "ds": d,
+            "yhat": float(yh),
+            "yhat-lo-80": float(lo8),
+            "yhat-hi-80": float(hi8),
+            "yhat-lo-95": float(lo9),
+            "yhat-hi-95": float(hi9),
+        })
+
+df_fcst = pd.DataFrame(rows)
+df_fcst["department"] = df_fcst["unique_id"].str.split("_").str[0]
+
+# -----------------------------
+# FORECAST: df_fcst_multi (two models)
+# -----------------------------
+rows = []
+for uid in ids:
+    base_fc = df_fcst[df_fcst["unique_id"] == uid].copy()
+
+    for model_name, bias in [("Naive", 0.0), ("ML", 3.0)]:
+        yhat = base_fc["yhat"] + bias
+
+        for (_, r), yh in zip(base_fc.iterrows(), yhat):
+            rows.append({
+                "unique_id": uid,
+                "ds": r["ds"],
+                "model": model_name,
+                "yhat": float(yh),
+                "yhat-lo-80": float(yh - 5),
+                "yhat-hi-80": float(yh + 5),
+            })
+
+df_fcst_multi = pd.DataFrame(rows)
+
 df_fcst.head()
 
 ```
@@ -139,53 +204,71 @@ Prediction intervals are essential for inventory safety stock, risk assessment, 
 Global events apply to all series.
 
 Examples:
+
 - Holidays
 - Company-wide promotions
 - Weather disruptions affecting supply chain
 
-```python
-events_global = pd.DataFrame({
-    "ds": ["2022-02-14", "2022-05-30"],
-    "event": ["Valentine's Day", "Memorial Day"]
-})
+```{python}
+# -----------------------------
+# EVENTS: events_df
+# -----------------------------
 
+events_global = pd.DataFrame({
+    "ds": pd.to_datetime([
+        "2020-01-15",   # in-history promo
+        "2020-02-14",   # Valentine's
+        "2020-03-01",   # price change
+        "2020-04-01",   # event during forecast horizon
+    ]),
+    "event": ["Promo A", "Valentine's", "Price Change", "Spring Reset"],
+})
 events_global["ds"] = pd.to_datetime(events_global["ds"])
-events_global
+events_global.head()
 
 ```
 
 # 8. Local Events (Per-ID)
 Local events apply only to a specific item or department.
 
-```python
+```{python}
 events_local = pd.DataFrame({
     "unique_id": ["BEV_2", "BEV_2"],
-    "ds": ["2022-03-10", "2022-06-01"],
+    "ds": ["2020-03-10", "2020-02-28"],
     "event": ["Packaging Change", "Shelf Reset"]
 })
 
 events_local["ds"] = pd.to_datetime(events_local["ds"])
-events_local
+events_local.head()
 
 ```
 
 # 9. Anomalies
 An anomaly dataset can be generated from:
+
 - Outlier detection
 - QC rules
 - Unusually high/low sales
 
 TSForge expects:
+
 - unique_id
 - ds
 - flag column (default: anom_flag)
 
-```python
-anoms_df = (
-    df_actuals.sample(8)
-    .assign(anom_flag=1)
-    .loc[:, ["unique_id", "ds", "anom_flag"]]
-)
+```{python}
+# -----------------------------
+# ANOMALIES: anoms_df
+# -----------------------------
+anom_rows = []
+for uid in ids:
+    sub = df_actuals[df_actuals["unique_id"] == uid]
+    # pick 2 random dates from the middle of history
+    sample_dates = sub["ds"].iloc[20:70].sample(2, random_state=hash(uid) % 2**32)
+    for d in sample_dates:
+        anom_rows.append({"unique_id": uid, "ds": d})
+
+anoms_df = pd.DataFrame(anom_rows)
 
 anoms_df.head()
 
@@ -194,7 +277,7 @@ anoms_df.head()
 # 10. Basic Overlay Plotly
 The overlay mode plots all selected series together.
 
-```python
+```{python}
 fig = plot_timeseries(
     df=df_actuals,
     forecast=df_fcst,
@@ -215,7 +298,7 @@ fig
 # 11. Faceted Small Multiples
 Great for diagnostic inspection across many IDs.
 
-```python
+```{python}
 fig = plot_timeseries(
     df=df_actuals,
     forecast=df_fcst,
@@ -236,7 +319,7 @@ fig
 # 12. Dropdown Mode (Interactive Selector)
 Dropdown mode reduces visual clutter when many IDs exist.
 
-```python
+```{python}
 fig = plot_timeseries(
     df=df_actuals,
     forecast=df_fcst,
@@ -256,6 +339,7 @@ fig
 
 # 13. Styling Options
 The dark theme is optimized for:
+
 - Presentations
 - Videos
 - Demos
@@ -265,7 +349,7 @@ The dark theme is optimized for:
 TSForge provides a simple, clean way to customize titles, subtitles, axis labels, and layout elements using the `style` dictionary.
 
 This allows you to override theme defaults without touching Plotly directly.
-```python
+```{python}
 fig = plot_timeseries(
     df=df_actuals,
     id_col="unique_id",
@@ -287,7 +371,7 @@ fig
 
 ## Event Styling
 
-```python
+```{python}
 events_config = {
   "color": "#444",
   "opacity": 0.85,
@@ -305,7 +389,7 @@ plot_timeseries(
 ```
 
 ## Anomaly Styling
-```python
+```{python}
 plot_timeseries(
   df_actuals,
   id_col="unique_id",
@@ -318,9 +402,10 @@ plot_timeseries(
     "marker_size": 10
   }
 )
+```
 
 ## Theme Styling
-```python
+```{python}
 fig = plot_timeseries(
     df=df_actuals,
     id_col="unique_id",
@@ -438,6 +523,7 @@ Customize anomaly marker appearance:
 
 # 15. Summary
 In this tutorial, you learned how to use TSForge’s plot_timeseries() to visualize:
+
 - Historical actuals
 - Forecasts
 - Prediction intervals
