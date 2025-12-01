@@ -17,7 +17,7 @@ It’s designed to make it easy to:
 ## 🔹 Tutorials
 - [Getting Started](tutorials/01_intro.qmd)  
 - [Feature Engineering](tutorials/plot_timeseries.qmd)  
-
+- [Feature Engineering](tutorials/plot_seasonal.qmd) 
 ---
 
 ## 🔹 Why tsforge?

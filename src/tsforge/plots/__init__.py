@@ -11,6 +11,7 @@ from .core import THEMES, PALETTE, HIGHLIGHT
 
 __all__ = [
     "plot_timeseries",
+    "plot_seasonal",
     "THEMES",
     "PALETTE",
     "HIGHLIGHT",
