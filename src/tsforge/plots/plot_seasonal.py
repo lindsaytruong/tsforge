@@ -256,6 +256,7 @@ def plot_seasonal(
                     title=dict(text=f"Seasonal Subseries Facet (freq={freq})", y=0.98),
                     legend=dict(yanchor="top", y=0.92)
                 )
+                
                 return _apply_tsforge_style(fig, engine="plotly", context="seasonal")
 
             elif mode == "dropdown":

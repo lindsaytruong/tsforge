@@ -16,7 +16,9 @@ website:
           - href: tutorials/01_intro.qmd
             text: Getting Started
           - href: tutorials/plot_timeseries.qmd
-            text: Plot Time Series  # <-- add this
+            text: Plot Time Series  
+          - href: tutorials/plot_seasonal.qmd
+            text: Plot Seasonal Series  
     right:
       - icon: github
         href: https://github.com/forecastacademy/tsforge
@@ -31,6 +33,7 @@ website:
         contents:
           - tutorials/01_intro.qmd
           - tutorials/plot_timeseries.qmd
+          - tutorials/plot_seasonal.qmd
 
 format:
   html:

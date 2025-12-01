@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "tsforge"
 version = "0.1.0"
-description = "TSForge + course: build powerful forecasts in Python"
-authors = ["Jeff Tackes <tackes@gmail.com>"]
+description = "TSForge: build powerful forecasting insights and pipelines in Python"
+authors = ["Jeff Tackes <tackes@gmail.com>", "Lindsay Truong <lindsayetruong@gmail.com>"]
 packages = [{ include = "tsforge", from = "src" }]
 
 include = [

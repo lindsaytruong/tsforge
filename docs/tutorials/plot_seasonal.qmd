@@ -1,0 +1,305 @@
+---
+title: "plot_seasonal"
+subtitle: "TSForge Tutorial — plot_seasonal() Deep Dive"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    embed-resources: true    # required for Plotly
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
+jupyter: python3            # required to run Python code
+---
+
+# 1. Introduction
+
+`plot_seasonal()` is TSForge’s **diagnostic visualization engine** — designed to reveal the underlying shape, stability, and distribution of seasonal patterns.
+
+While standard line plots show *what* happened, seasonal plots explain *when* it happens. This function is critical for answering:
+- **Is there a pattern?** (Do sales always spike in Q4?)
+- **Is the pattern stable?** (Did the Q4 spike stop happening in 2023?)
+- **Are there anomalies?** (Was that March drop normal seasonality or a supply shock?)
+
+It supports:
+- **Trend Normalization:** Compare seasonal shapes even when sales double year-over-year.
+- **Signal Extraction:** Visualize the "True Average Seasonality" overlaid on noisy data.
+- **Boxplot & Line Modes:** Switch between distributional views and trajectory views.
+- **Interactive Modes:** Overlay, Facet, and Dropdown layouts.
+
+---
+
+# 2. Architecture Diagram
+
+```mermaid
+flowchart TB
+
+A[Input DataFrame] --> B[Group / Aggregate]
+B --> C[Normalize Trend]
+C --> D[Extract Seasonal Cycle<br>Month/Quarter/Week/Day]
+D --> E[Collapse to<br>(ID, Year, Cycle)]
+E --> F[Calculate<br>Grand Mean]
+F --> G[Render Mode<br>Line / Box]
+G --> H[Layout<br>Overlay / Facet / Dropdown]
+H --> I[Plotly Figure]
+
+# 3. Load Libraries
+
+```{python}
+import pandas as pd
+import numpy as np
+
+from tsforge.plots.charts import plot_seasonal
+from tsforge.plots.core.theme import THEMES
+```
+
+# 4. Build a Synthetic Dataset
+We will build a dataset that intentionally has a Strong Trend. This is crucial to demonstrate why standard seasonal plots often fail and why the normalize=True feature is a game changer.
+
+Our dataset contains:
+
+- SKU_A: Stable seasonality, no trend.
+- SKU_B: Strong seasonality, massive growth trend (sales double).
+- SKU_C: Noisy, weak seasonality.
+
+```{python}
+# For reproducibility
+rng = np.random.default_rng(42)
+
+dates = pd.date_range("2020-01-01", "2023-12-31", freq="D")
+n = len(dates)
+
+rows = []
+
+# --- SKU A: Stable Seasonality ---
+# Peak in Summer (approx day 180), Low in Winter
+seas_a = np.sin(2 * np.pi * dates.dayofyear / 365.25) * 20
+y_a = 100 + seas_a + rng.normal(0, 5, n)
+
+# --- SKU B: Strong Trend + Seasonality ---
+# Same seasonality, but sales grow from 100 to 300
+seas_b = np.sin(2 * np.pi * dates.dayofyear / 365.25) * 20
+trend_b = np.linspace(0, 200, n)
+y_b = 100 + seas_b + trend_b + rng.normal(0, 5, n)
+
+# --- SKU C: Weak/Noisy Seasonality ---
+seas_c = np.sin(2 * np.pi * dates.dayofyear / 365.25) * 5
+y_c = 50 + seas_c + rng.normal(0, 10, n) # High noise
+
+for d, va, vb, vc in zip(dates, y_a, y_b, y_c):
+    rows.append({"unique_id": "SKU_A", "ds": d, "y": max(va, 0)})
+    rows.append({"unique_id": "SKU_B", "ds": d, "y": max(vb, 0)})
+    rows.append({"unique_id": "SKU_C", "ds": d, "y": max(vc, 0)})
+
+df = pd.DataFrame(rows)
+df["year"] = df["ds"].dt.year
+df.head()
+```
+
+# 5. Quick Start (The "Spaghetti" Plot)
+By default, `plot_seasonal` folds time onto a 12-month axis. Each line represents one year.
+
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_A",  # Focus on the stable SKU first
+    freq="M",
+    kind="line"
+)
+fig
+```
+
+# 6. The "Trend Problem" (Why you need Normalization)
+Let's look at **SKU_B**, which has a massive growth trend. In a standard plot, the years are stacked vertically. 2023 is way above 2020. It is impossible to tell if the seasonal shape has changed, or just the volume.
+
+```{python}
+# The "Bad" Plot: Trend obscures Seasonality
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_B",
+    normalize=False,  # <--- Default behavior
+    title="SKU_B: Standard View (Hard to compare shapes)"
+)
+fig
+```
+
+The Fix: `normalize=True`
+By setting `normalize=True`, TSForge divides each year's data by that year's mean. All years are centered around `1.0`. Now you can clearly see that the seasonal shape is identical, even though volume doubled.
+
+```{python}
+# The "Good" Plot: Trend Removed
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_B",
+    normalize=True,   # <--- The Game Changer
+    title="SKU_B: Normalized View (Clear Shape Comparison)"
+)
+fig
+```
+
+# 7. Extracting the Signal (`show_mean`)
+Sometimes the yearly lines are noisy "spaghetti." You want to know: "What is the typical pattern?"
+
+Use `show_mean=True`. This:
+
+1. Fades the yearly lines into the background (opacity).
+2. Overlays a bold, dashed black line showing the average seasonality.
+
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_C",    # The noisy SKU
+    normalize=True,
+    show_mean=True, # <--- Overlay the Signal
+    title="SKU_C: Signal Extraction"
+)
+fig
+```
+
+# 8. Boxplot Mode (Distributions)
+If you want to understand variance rather than trajectory, use `kind="box"`. This groups all years together per month.
+
+Tip: Normalized boxplots are powerful for outlier detection. If a point is far outside the box in a normalized plot, it is a true seasonal anomaly.
+
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_A",
+    kind="box",
+    normalize=True,  # Normalized boxplot = Percentage deviations
+    title="Seasonal Distribution (Normalized)"
+)
+fig
+```
+
+# 9. Multi-Series layouts
+Just like `plot_timeseries`, this function supports multiple layout modes for handling many items.
+
+### Facet Mode
+Small multiples to compare seasonality across different items.
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids=["SKU_A", "SKU_B", "SKU_C"],
+    mode="facet",
+    normalize=True,
+    show_mean=True
+)
+fig
+```
+
+### Dropdown Mode
+Interactive selector for exploring large datasets one item at a time.
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids=["SKU_A", "SKU_B", "SKU_C"],
+    mode="dropdown",
+    normalize=True,
+    show_mean=True
+)
+fig
+```
+
+# 10. Aggregation & Frequencies
+You can aggregate daily data up to weekly or quarterly views automatically.
+
+**Quarterly View** (`freq="Q"`)
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_A",
+    freq="Q",       # <--- Aggregates to Q1, Q2, Q3, Q4
+    kind="box",
+    title="Quarterly Seasonality"
+)
+fig
+```
+
+**Weekly View** (`freq="W"`)
+Useful for identifying "week of year" patterns.
+
+```{python}
+fig = plot_seasonal(
+    df=df,
+    id_col="unique_id",
+    date_col="ds",
+    value_col="y",
+    ids="SKU_A",
+    freq="W",       # <--- Aggregates to Week 1-52
+    show_mean=True,
+    title="Weekly Seasonality"
+)
+fig
+```
+
+# 11. Parameter Reference 
+
+## Core Inputs
+
+| Parameter | Type | Description |
+|:---|:---|:---|
+| `df` | `pd.DataFrame` | Input dataframe containing time series history. |
+| `id_col` | `str` | Column identifying unique series (e.g., item/store). |
+| `date_col` | `str` | Column with datetime values. |
+| `value_col` | `str` | The metric to plot (e.g., Sales, Calls, Orders). |
+
+## Analysis Controls
+
+| Parameter | Type | Description |
+|:---|:---|:---|
+| `freq` | `str` | The seasonal cycle to plot. Options: `"M"` (Month), `"Q"` (Quarter), `"W"` (Week), `"D"` (Day). |
+| `normalize` | `bool` | **Critical.** If `True`, divides each year's data by that year's mean. Removes trend to isolate seasonal shape. |
+| `show_mean` | `bool` | If `True` (and `kind="line"`), overlays the average seasonal pattern as a bold dashed line. |
+| `seasonal_agg` | `str` | Aggregation function used when collapsing data (default: `"mean"`). |
+
+## Rendering & Styling
+
+| Parameter | Type | Description |
+|:---|:---|:---|
+| `kind` | `str` | `"line"` (yearly trajectories) or `"box"` (distributions). |
+| `mode` | `str` | `"overlay"` (all on one), `"facet"` (small multiples), or `"dropdown"` (interactive). |
+| `engine` | `str` | `"plotly"` (interactive, default) or `"matplotlib"` (static). |
+| `ids` | `list` | Specific ID(s) to filter. If `None`, samples up to 6 random IDs. |
+
+
+# 12. Summary
+In this tutorial, you learned how to use TSForge’s `plot_seasonal()` to:
+
+1. Diagnose Seasonality: Visualize the recurring patterns in your data.
+
+2. Remove Trend: Use `normalize=True` to compare seasonal shapes across high-growth years.
+
+3. Extract Signal: Use `show_mean=True` to find the typical pattern amidst the noise.
+
+4. Analyze Variance: Use `kind="box"` to see which months are volatile and which are stable.
+
+This function transforms seasonality from a "gut feeling" into a measurable, visible signal.
