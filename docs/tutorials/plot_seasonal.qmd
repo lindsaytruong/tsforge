@@ -128,7 +128,9 @@ fig = plot_seasonal(
     value_col="y",
     ids="SKU_B",
     normalize=False,  # <--- Default behavior
-    title="SKU_B: Standard View (Hard to compare shapes)"
+    style={
+    "title": "SKU_B: Standard View (Hard to compare shapes)",
+    }
 )
 fig
 ```
@@ -145,7 +147,10 @@ fig = plot_seasonal(
     value_col="y",
     ids="SKU_B",
     normalize=True,   # <--- The Game Changer
-    title="SKU_B: Normalized View (Clear Shape Comparison)"
+    style={
+    "title": "SKU_B: Normalized View (Clear Shape Comparison)",
+    }
+
 )
 fig
 ```
@@ -167,7 +172,10 @@ fig = plot_seasonal(
     ids="SKU_C",    # The noisy SKU
     normalize=True,
     show_mean=True, # <--- Overlay the Signal
-    title="SKU_C: Signal Extraction"
+    style={
+    "title": "SKU_C: Signal Extraction",
+    }
+
 )
 fig
 ```
@@ -186,7 +194,10 @@ fig = plot_seasonal(
     ids="SKU_A",
     kind="box",
     normalize=True,  # Normalized boxplot = Percentage deviations
-    title="Seasonal Distribution (Normalized)"
+    style={
+    "title": "Seasonal Distribution (Normalized)"
+    }
+
 )
 fig
 ```
@@ -239,7 +250,10 @@ fig = plot_seasonal(
     ids="SKU_A",
     freq="Q",       # <--- Aggregates to Q1, Q2, Q3, Q4
     kind="box",
-    title="Quarterly Seasonality"
+    style={
+    "title": "Quarterly Seasonality"
+    }
+
 )
 fig
 ```
@@ -256,7 +270,10 @@ fig = plot_seasonal(
     ids="SKU_A",
     freq="W",       # <--- Aggregates to Week 1-52
     show_mean=True,
-    title="Weekly Seasonality"
+    style={
+    "title": "Weekly Seasonality"
+    }
+
 )
 fig
 ```

@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 from typing import Union, List, Optional, Literal
 # Assuming these exist in your library
-from tsforge.plots.style import _apply_tsforge_style, PALETTE, HIGHLIGHT
+from tsforge.plots.core.palette import PALETTE, HIGHLIGHT, hex_to_rgba
+from tsforge.plots.core.theme import apply_theme, apply_legend
 
 def plot_seasonal(
     df: pd.DataFrame,
