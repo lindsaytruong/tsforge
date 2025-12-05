@@ -9,7 +9,8 @@ from statsforecast.models import _intervals
 from statsmodels.tsa.seasonal import STL
 
 # windows_ops not a PYPI library..
-#from window_ops.shift import shift_array
+# from window_ops.shift import shift_array
+
 
 # recreating shift_array function here.
 def shift_array(x, lag):
@@ -79,18 +80,22 @@ def MI_top_k_lags(x, freq):
         return {"MI_top_k_lags": np.nan}
 
     target = x[max_lag:]  # lag 0
-    lag_matrix = np.column_stack(
-        [
-            x[max_lag - lag : len(x) - lag]  # shift by `lag`
-            for lag in range(1, max_lag + 1)
-        ]
-    )
+    try:
+        lag_matrix = np.column_stack(
+            [
+                x[max_lag - lag : len(x) - lag]  # shift by `lag`
+                for lag in range(1, max_lag + 1)
+            ]
+        )
 
-    mi_scores = mutual_info_regression(X=lag_matrix, y=target, random_state=42)
+        mi_scores = mutual_info_regression(X=lag_matrix, y=target, random_state=42)
 
-    mi_scores = np.sort(mi_scores)[::-1]
-    # Return the sum of the top 5 MI scores
-    return {"MI_top_k_lags": mi_scores[:5].sum() / mi_scores.sum()}
+        mi_scores = np.sort(mi_scores)[::-1]
+        top_k = min(5, len(mi_scores))
+        # Return the sum of the top 5 MI scores
+        return {"MI_top_k_lags": mi_scores[:top_k].sum() / mi_scores.sum()}
+    except Exception:
+        return {"MI_top_k_lags": np.nan}
 
 
 def MI_top_k_lags_indices(x, freq):
@@ -99,18 +104,22 @@ def MI_top_k_lags_indices(x, freq):
         return {"MI_top_k_lags_indices": np.nan}
 
     target = x[max_lag:]  # lag 0
-    lag_matrix = np.column_stack(
-        [
-            x[max_lag - lag : len(x) - lag]  # shift by `lag`
-            for lag in range(1, max_lag + 1)
-        ]
-    )
+    try:
+        lag_matrix = np.column_stack(
+            [
+                x[max_lag - lag : len(x) - lag]  # shift by `lag`
+                for lag in range(1, max_lag + 1)
+            ]
+        )
 
-    mi_scores = mutual_info_regression(X=lag_matrix, y=target, random_state=42)
+        mi_scores = mutual_info_regression(X=lag_matrix, y=target, random_state=42)
 
-    mi_scores = np.sort(mi_scores)[::-1]
-    # Return the sum of the top 5 MI scores
-    return {"MI_top_k_lags_indices": [np.argsort(mi_scores)[:5]]}
+        mi_scores = np.sort(mi_scores)[::-1]
+        top_k = min(5, len(mi_scores))
+        # Return the sum of the top 5 MI scores
+        return {"MI_top_k_lags_indices": [np.argsort(mi_scores)[:top_k]]}
+    except Exception:
+        return {"MI_top_k_lags_indices": np.nan}
 
 
 def overdispersion(x, freq: int):
@@ -154,49 +163,32 @@ def score_mase(x, season: int):
     return np.mean(np.abs(snaive - target))
 
 
+def _seasonal_strength(mae_seasonal: float, mae_naive: float) -> float:
+    if not np.isfinite(mae_naive) or mae_naive == 0:
+        return np.nan
+    strength = 1 - (mae_seasonal / mae_naive)
+    return float(np.clip(strength, 0.0, 1.0))
+
+
 def monthly_MASE_score(x, freq: int):
-    """Calculate the SNAIVE forecastability of a time series.
-
-    Args:
-        x: Time series values
-        freq: Frequency of the time series (not used in this function)
-
-    Returns:
-        Dictionary with the SNAIVE forecastability of the time series
-    """
+    """Calculate the seasonal strength relative to a monthly naive benchmark."""
     month_score = score_mase(x, 4)
     naive_score = score_mase(x, 1)
-    return {"monthly_MASE_score": month_score / naive_score}
+    return {"monthly_MASE_score": _seasonal_strength(month_score, naive_score)}
 
 
 def yearly_MASE_score(x, freq: int):
-    """Calculate the SNAIVE forecastability of a time series.
-
-    Args:
-        x: Time series values
-        freq: Frequency of the time series (not used in this function)
-
-    Returns:
-        Dictionary with the SNAIVE forecastability of the time series
-    """
+    """Calculate the seasonal strength relative to a yearly naive benchmark."""
     naive_score = score_mase(x, 1)
     year_score = score_mase(x, 52)
-    return {"yearly_MASE_score": year_score / naive_score}
+    return {"yearly_MASE_score": _seasonal_strength(year_score, naive_score)}
 
 
 def quarterly_MASE_score(x, freq: int):
-    """Calculate the SNAIVE forecastability of a time series.
-
-    Args:
-        x: Time series values
-        freq: Frequency of the time series (not used in this function)
-
-    Returns:
-        Dictionary with the SNAIVE forecastability of the time series
-    """
+    """Calculate the seasonal strength relative to a quarterly naive benchmark."""
     naive_score = score_mase(x, 1)
     quarter_score = score_mase(x, 13)
-    return {"quarterly_MASE_score": quarter_score / naive_score}
+    return {"quarterly_MASE_score": _seasonal_strength(quarter_score, naive_score)}
 
 
 def pct_zeros(x, freq):
