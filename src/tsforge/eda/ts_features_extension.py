@@ -114,10 +114,10 @@ def MI_top_k_lags_indices(x, freq):
 
         mi_scores = mutual_info_regression(X=lag_matrix, y=target, random_state=42)
 
-        mi_scores = np.sort(mi_scores)[::-1]
         top_k = min(5, len(mi_scores))
-        # Return the sum of the top 5 MI scores
-        return {"MI_top_k_lags_indices": [np.argsort(mi_scores)[:top_k]]}
+        top_idx = np.argsort(mi_scores)[-top_k:][::-1]
+        top_lags = (top_idx + 1).tolist()
+        return {"MI_top_k_lags_indices": top_lags}
     except Exception:
         return {"MI_top_k_lags_indices": np.nan}
 
