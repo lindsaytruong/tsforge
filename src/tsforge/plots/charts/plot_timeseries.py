@@ -191,9 +191,6 @@ def plot_timeseries(
             events_config=events_config,
             anomalies_config=anomalies_config,
         )
-        #print("\n=== DEBUG: ev_all preview ===")
-        #print(ev_all.head())
-        #print("Columns:", ev_all.columns.tolist())
     elif mode == "facet":
         fig = _plot_facet(
             df_sub=df_sub,
@@ -256,6 +253,31 @@ def plot_timeseries(
             fig.update_yaxes(title_text=style["y_title"])
 
     fig = apply_legend(fig, theme)
+
+    # ------------------------------------------------------------------
+    # 8) Position legend underneath the plot
+    # ------------------------------------------------------------------
+    # Count legend items to determine bottom margin
+    num_legend_items = sum(1 for trace in fig.data if trace.showlegend)
+    
+    # Calculate rows needed (assume ~6 items per row)
+    legend_rows = max(1, (num_legend_items + 5) // 6)
+    bottom_margin = 60 + (legend_rows * 25)
+    
+    fig.update_layout(
+        legend=dict(
+            orientation='h',
+            x=0.5,
+            y=-0.12,
+            xanchor='center',
+            yanchor='top',
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='rgba(0,0,0,0.1)',
+            borderwidth=1,
+        ),
+        margin=dict(b=bottom_margin),
+    )
+
     return fig
 
 
@@ -573,7 +595,6 @@ def _add_event_lines_and_labels(
     unique_dates = sorted(ev_all[date_col].unique())
 
     # Build mapping: date → event label
-    # IMPORTANT: we use event_label_col, NOT the first column (bug fix)
     label_map = (
         ev_all.drop_duplicates(subset=[date_col])
               .set_index(date_col)[event_label_col]
