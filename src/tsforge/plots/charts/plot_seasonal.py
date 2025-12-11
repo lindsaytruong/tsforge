@@ -49,8 +49,6 @@ def plot_seasonal(
     # -----------------------------
     # Grouping (rollups)
     # -----------------------------
-    # NOTE: Correct argument order for your preprocess function:
-    # aggregate_by_group(df, group_col, date_col, value_col, agg, id_col)
     df, id_col = aggregate_by_group(
         df=df,
         group_col=group_col,
@@ -166,6 +164,7 @@ def plot_seasonal(
                         boxpoints="all",
                         jitter=0.2,
                         marker=dict(opacity=0.6, size=4, color=HIGHLIGHT),
+                        showlegend=False,  # Hide legend for facet (titles show IDs)
                     ),
                     row=r, col=c
                 )
@@ -188,6 +187,7 @@ def plot_seasonal(
                     jitter=0.2,
                     marker=dict(opacity=0.6, size=4, color=HIGHLIGHT),
                     visible=(i == 0),
+                    showlegend=False,  # Dropdown already shows selection
                 )
 
                 fig.add_trace(box)
@@ -207,7 +207,9 @@ def plot_seasonal(
                 updatemenus=[{
                     "buttons": buttons,
                     "direction": "down",
-                    "x": 1.05, "y": 1.1
+                    "x": 1.0, "y": 1.15,
+                    "xanchor": "right",
+                    "yanchor": "top",
                 }]
             )
 
@@ -224,21 +226,32 @@ def plot_seasonal(
     if kind == "line":
 
         opacity = 0.35 if show_mean else 0.9
+        
+        # When show_mean is True, hide individual year lines from legend
+        # to reduce clutter - the mean line is the important one
+        show_year_legend = not show_mean
 
         if mode == "overlay":
             fig = go.Figure()
+            
+            # Get unique years for consistent legend
+            unique_years = sorted(df["year"].unique())
 
             for uid in ids:
                 sub = df[df[id_col] == uid]
                 for j, (yr, g) in enumerate(sub.groupby("year")):
                     g = g.sort_values("seasonal_x")
+                    # Only show legend for first series to avoid duplicates
+                    is_first_series = (uid == ids[0])
                     fig.add_trace(go.Scatter(
                         x=g["seasonal_x"],
                         y=g[value_col],
                         mode="lines+markers",
-                        name=f"{uid}-{yr}",
+                        name=str(yr),
+                        legendgroup=str(yr),  # Group by year
                         line=dict(color=PALETTE[j % len(PALETTE)], width=2),
                         opacity=opacity,
+                        showlegend=show_year_legend and is_first_series,
                     ))
 
                 # mean line
@@ -248,9 +261,10 @@ def plot_seasonal(
                         x=m["seasonal_x"],
                         y=m[value_col],
                         mode="lines",
-                        name=f"{uid} mean",
+                        name=f"Mean" if len(ids) == 1 else f"{uid} mean",
                         line=dict(color="black", width=4, dash="dash"),
                         opacity=1.0,
+                        showlegend=True,
                     ))
 
         elif mode == "facet":
@@ -259,35 +273,47 @@ def plot_seasonal(
             rows = ceil(n / cols)
             fig = make_subplots(rows=rows, cols=cols, subplot_titles=[str(i) for i in ids], shared_xaxes=True)
 
+            # Track which years we've added to legend
+            years_in_legend = set()
+            
             r = c = 1
             for uid in ids:
                 sub = df[df[id_col] == uid]
                 for j, (yr, g) in enumerate(sub.groupby("year")):
                     g = g.sort_values("seasonal_x")
+                    # Only add to legend once per year
+                    add_to_legend = show_year_legend and (yr not in years_in_legend)
+                    if add_to_legend:
+                        years_in_legend.add(yr)
+                    
                     fig.add_trace(
                         go.Scatter(
                             x=g["seasonal_x"],
                             y=g[value_col],
                             mode="lines+markers",
-                            name=f"{uid}-{yr}",
+                            name=str(yr),
+                            legendgroup=str(yr),
                             line=dict(color=PALETTE[j % len(PALETTE)], width=2),
                             opacity=opacity,
-                            showlegend=(r == 1),
+                            showlegend=add_to_legend,
                         ),
                         row=r, col=c
                     )
 
                 if show_mean:
                     m = mean_df[mean_df[id_col] == uid].sort_values("seasonal_x")
+                    # Only show mean legend once
+                    show_mean_legend = (r == 1 and c == 1)
                     fig.add_trace(
                         go.Scatter(
                             x=m["seasonal_x"],
                             y=m[value_col],
                             mode="lines",
-                            name="mean",
+                            name="Mean",
+                            legendgroup="mean",
                             line=dict(color="black", width=4, dash="dash"),
                             opacity=1.0,
-                            showlegend=(r == 1),
+                            showlegend=show_mean_legend,
                         ),
                         row=r, col=c
                     )
@@ -299,6 +325,10 @@ def plot_seasonal(
         elif mode == "dropdown":
             fig = go.Figure()
             trace_counts = []
+            
+            # Get unique years for consistent coloring
+            unique_years = sorted(df["year"].unique())
+            year_to_idx = {yr: i for i, yr in enumerate(unique_years)}
 
             for idx, uid in enumerate(ids):
                 sub = df[df[id_col] == uid]
@@ -306,15 +336,20 @@ def plot_seasonal(
 
                 for j, (yr, g) in enumerate(sub.groupby("year")):
                     g = g.sort_values("seasonal_x")
+                    color_idx = year_to_idx.get(yr, j)
+                    # Only show legend for first dropdown item
+                    is_first = (idx == 0)
                     fig.add_trace(
                         go.Scatter(
                             x=g["seasonal_x"],
                             y=g[value_col],
                             mode="lines+markers",
-                            name=f"{uid}-{yr}",
-                            line=dict(color=PALETTE[j % len(PALETTE)], width=2),
+                            name=str(yr),
+                            legendgroup=str(yr),
+                            line=dict(color=PALETTE[color_idx % len(PALETTE)], width=2),
                             opacity=opacity,
                             visible=(idx == 0),
+                            showlegend=show_year_legend and is_first,
                         )
                     )
                     local_count += 1
@@ -326,9 +361,11 @@ def plot_seasonal(
                             x=m["seasonal_x"],
                             y=m[value_col],
                             mode="lines",
-                            name="mean",
+                            name="Mean",
+                            legendgroup="mean",
                             line=dict(color="black", width=4, dash="dash"),
                             visible=(idx == 0),
+                            showlegend=(idx == 0),  # Only show mean legend once
                         )
                     )
                     local_count += 1
@@ -351,7 +388,9 @@ def plot_seasonal(
                 updatemenus=[{
                     "buttons": buttons,
                     "direction": "down",
-                    "x": 1.05, "y": 1.1
+                    "x": 1.0, "y": 1.15,
+                    "xanchor": "right",
+                    "yanchor": "top",
                 }]
             )
 
@@ -384,5 +423,29 @@ def plot_seasonal(
             fig.update_yaxes(title_text=style["y_title"])
 
     fig = apply_legend(fig, theme)
+
+    # -----------------------------
+    # LEGEND POSITIONING (underneath the plot)
+    # -----------------------------
+    # Count visible legend items to determine margin
+    num_legend_items = sum(1 for trace in fig.data if trace.showlegend)
+    
+    # Calculate rows needed (assume ~6 items per row)
+    legend_rows = max(1, (num_legend_items + 5) // 6)
+    bottom_margin = 60 + (legend_rows * 25)
+    
+    fig.update_layout(
+        legend=dict(
+            orientation='h',
+            x=0.5,
+            y=-0.12,
+            xanchor='center',
+            yanchor='top',
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='rgba(0,0,0,0.1)',
+            borderwidth=1,
+        ),
+        margin=dict(b=bottom_margin),
+    )
 
     return fig
