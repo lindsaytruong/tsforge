@@ -12,7 +12,7 @@ from plotly.subplots import make_subplots
 
 # ---- core utilities ---------------------------------------------------
 from tsforge.plots.core.palette import PALETTE, HIGHLIGHT, hex_to_rgba
-from tsforge.plots.core.theme import apply_theme, apply_legend
+from tsforge.plots.core.theme import apply_theme, apply_legend, THEMES
 from tsforge.plots.core.preprocess import (
     apply_smoothing,
     aggregate_by_group,
@@ -190,6 +190,7 @@ def plot_timeseries(
             an_df=an_df,
             events_config=events_config,
             anomalies_config=anomalies_config,
+            theme=theme,
         )
     elif mode == "facet":
         fig = _plot_facet(
@@ -208,6 +209,7 @@ def plot_timeseries(
             events_config=events_config,
             anomalies_config=anomalies_config,
             wrap=wrap,
+            theme=theme,
         )
 
     elif mode == "dropdown":
@@ -226,6 +228,7 @@ def plot_timeseries(
             an_df=an_df,
             events_config=events_config,
             anomalies_config=anomalies_config,
+            theme=theme,
         )
 
     else:
@@ -251,7 +254,9 @@ def plot_timeseries(
             fig.update_xaxes(title_text=style["x_title"])
         if "y_title" in style:
             fig.update_yaxes(title_text=style["y_title"])
-
+        # New: allow fixed y-axis range through style["y_range"]
+        if "y_range" in style:
+            fig.update_yaxes(range=style["y_range"])
     fig = apply_legend(fig, theme)
 
     # ------------------------------------------------------------------
@@ -291,20 +296,39 @@ def _plot_overlay(
     forecast_value_col, level, lo_pattern, hi_pattern,
     ev_all, an_df,
     events_config, anomalies_config,
+    theme,
 ):
     fig = go.Figure()
+
+    # Pull theme-level style (does NOT remove PALETTE functionality)
+    t = THEMES.get(theme, THEMES["fa"])
+    line_width = t.get("line_width", 2)
+    pi_opacity = t.get("pi_opacity", 0.20)
+    pi_color_default = t.get("pi_color", None)
+    accent_color = t.get("accent_color", "crimson")
+
     anomaly_legend_shown = False
 
-    # Config defaults
+    # Config defaults (events)
     ev_color = events_config.get("color", "#555") if events_config else "#555"
     ev_stagger = events_config.get("stagger_labels", True) if events_config else True
 
-    an_color = anomalies_config.get("color", "crimson") if anomalies_config else "crimson"
+    # Anomalies default → theme accent color
+    an_color = (
+        anomalies_config.get("color", accent_color)
+        if anomalies_config
+        else accent_color
+    )
     an_symbol = anomalies_config.get("marker_symbol", "x") if anomalies_config else "x"
     an_size = anomalies_config.get("marker_size", 8) if anomalies_config else 8
 
     for i, uid in enumerate(ids):
+        # Keep PALETTE for multi-series distinction
         color = PALETTE[i % len(PALETTE)]
+        # If only one series and theme defines a line_color, use that
+        if len(ids) == 1 and "line_color" in t:
+            color = t["line_color"]
+
         sub = df_sub[df_sub[id_col] == uid]
         fsub = fcst_df[fcst_df[id_col] == uid] if fcst_df is not None else None
         an_sub = an_df[an_df[id_col] == uid] if an_df is not None else None
@@ -314,6 +338,7 @@ def _plot_overlay(
             for L in sorted(level, reverse=True):
                 lo, hi = pi_column_names(forecast_value_col, L, lo_pattern, hi_pattern)
                 if lo in fsub.columns and hi in fsub.columns:
+                    # lower bound (hidden, used for fill)
                     fig.add_trace(go.Scatter(
                         x=fsub[date_col],
                         y=fsub[lo],
@@ -322,13 +347,15 @@ def _plot_overlay(
                         hoverinfo="skip",
                         showlegend=False,
                     ))
+                    # upper bound with fill
+                    fillcolor = pi_color_default or hex_to_rgba(color, pi_opacity)
                     fig.add_trace(go.Scatter(
                         x=fsub[date_col],
                         y=fsub[hi],
                         mode="lines",
                         line=dict(width=0),
                         fill="tonexty",
-                        fillcolor=hex_to_rgba(color, 0.22),
+                        fillcolor=fillcolor,
                         hoverinfo="skip",
                         showlegend=False,
                     ))
@@ -339,7 +366,7 @@ def _plot_overlay(
             y=sub[value_col],
             mode="lines",
             name=str(uid),
-            line=dict(color=color, width=2),
+            line=dict(color=color, width=line_width),
         ))
 
         # ---- forecast
@@ -348,7 +375,7 @@ def _plot_overlay(
                 x=fsub[date_col],
                 y=fsub[forecast_value_col],
                 mode="lines",
-                line=dict(color=color, width=2, dash="dash"),
+                line=dict(color=color, width=line_width, dash="dash"),
                 name=f"{uid} forecast",
                 showlegend=False,
             ))
@@ -367,8 +394,10 @@ def _plot_overlay(
 
     # ---- global events
     if ev_all is not None:
-        _add_event_lines_and_labels(fig, ev_all, date_col=date_col,
-                                    ev_color=ev_color, stagger=ev_stagger)
+        _add_event_lines_and_labels(
+            fig, ev_all, date_col=date_col,
+            ev_color=ev_color, stagger=ev_stagger
+        )
 
     return fig
 
@@ -380,6 +409,7 @@ def _plot_facet(
     ev_all, an_df,
     events_config, anomalies_config,
     wrap,
+    theme,
 ):
     n = len(ids)
     fig = make_subplots(
@@ -388,17 +418,30 @@ def _plot_facet(
         subplot_titles=[str(uid) for uid in ids],
     )
 
+    # Theme-level style
+    t = THEMES.get(theme, THEMES["fa"])
+    line_width = t.get("line_width", 2)
+    pi_opacity = t.get("pi_opacity", 0.20)
+    pi_color_default = t.get("pi_color", None)
+    accent_color = t.get("accent_color", "crimson")
+
     ev_color = events_config.get("color", "#555") if events_config else "#555"
     ev_stagger = events_config.get("stagger_labels", True) if events_config else True
 
-    an_color = anomalies_config.get("color", "crimson") if anomalies_config else "crimson"
+    an_color = (
+        anomalies_config.get("color", accent_color)
+        if anomalies_config
+        else accent_color
+    )
     an_symbol = anomalies_config.get("marker_symbol", "x") if anomalies_config else "x"
     an_size = anomalies_config.get("marker_size", 8) if anomalies_config else 8
 
     anomaly_legend_shown = False
 
     for r, uid in enumerate(ids, start=1):
-        color = PALETTE[(r - 1) % len(PALETTE)]
+        # Facet mode: one series per panel – use theme line_color if defined
+        color = t.get("line_color", PALETTE[(r - 1) % len(PALETTE)])
+
         sub = df_sub[df_sub[id_col] == uid]
         fsub = fcst_df[fcst_df[id_col] == uid] if fcst_df is not None else None
         an_sub = an_df[an_df[id_col] == uid] if an_df is not None else None
@@ -414,11 +457,12 @@ def _plot_facet(
                         hoverinfo="skip", showlegend=False,
                     ), row=r, col=1)
 
+                    fillcolor = pi_color_default or hex_to_rgba(color, pi_opacity)
                     fig.add_trace(go.Scatter(
                         x=fsub[date_col], y=fsub[hi],
                         mode="lines", line=dict(width=0),
                         fill="tonexty",
-                        fillcolor=hex_to_rgba(color, 0.22),
+                        fillcolor=fillcolor,
                         hoverinfo="skip", showlegend=False,
                     ), row=r, col=1)
 
@@ -427,7 +471,7 @@ def _plot_facet(
             x=sub[date_col], y=sub[value_col],
             mode="lines",
             name=str(uid),
-            line=dict(color=color, width=2),
+            line=dict(color=color, width=line_width),
         ), row=r, col=1)
 
         # forecast
@@ -435,7 +479,7 @@ def _plot_facet(
             fig.add_trace(go.Scatter(
                 x=fsub[date_col], y=fsub[forecast_value_col],
                 mode="lines",
-                line=dict(color=color, dash="dash", width=2),
+                line=dict(color=color, dash="dash", width=line_width),
                 showlegend=False,
             ), row=r, col=1)
 
@@ -452,9 +496,11 @@ def _plot_facet(
 
     # events in all rows
     if ev_all is not None:
-        _add_event_lines_and_labels(fig, ev_all, date_col=date_col,
-                                    ev_color=ev_color, stagger=ev_stagger,
-                                    facet=True, nrows=n)
+        _add_event_lines_and_labels(
+            fig, ev_all, date_col=date_col,
+            ev_color=ev_color, stagger=ev_stagger,
+            facet=True, nrows=n
+        )
 
     fig.update_layout(height=280 * n)
     return fig
@@ -466,20 +512,36 @@ def _plot_dropdown(
     forecast_value_col, level, lo_pattern, hi_pattern,
     ev_all, an_df,
     events_config, anomalies_config,
+    theme,
 ):
     fig = go.Figure()
     trace_map = {uid: [] for uid in ids}
     anomaly_legend_shown = False
 
+    # Theme-level style
+    t = THEMES.get(theme, THEMES["fa"])
+    line_width = t.get("line_width", 2)
+    pi_opacity = t.get("pi_opacity", 0.20)
+    pi_color_default = t.get("pi_color", None)
+    accent_color = t.get("accent_color", "crimson")
+
     ev_color = events_config.get("color", "#555") if events_config else "#555"
     ev_stagger = events_config.get("stagger_labels", True) if events_config else True
 
-    an_color = anomalies_config.get("color", "crimson") if anomalies_config else "crimson"
+    an_color = (
+        anomalies_config.get("color", accent_color)
+        if anomalies_config
+        else accent_color
+    )
     an_symbol = anomalies_config.get("marker_symbol", "x") if anomalies_config else "x"
     an_size = anomalies_config.get("marker_size", 8) if anomalies_config else 8
 
     for i, uid in enumerate(ids):
         color = PALETTE[i % len(PALETTE)]
+        # If dropdown only has one ID, prefer theme line_color if set
+        if len(ids) == 1 and "line_color" in t:
+            color = t["line_color"]
+
         visible = (i == 0)
 
         sub = df_sub[df_sub[id_col] == uid]
@@ -499,11 +561,12 @@ def _plot_dropdown(
                     ))
                     trace_map[uid].append(len(fig.data) - 1)
 
+                    fillcolor = pi_color_default or hex_to_rgba(color, pi_opacity)
                     fig.add_trace(go.Scatter(
                         x=fsub[date_col], y=fsub[hi],
                         mode="lines", line=dict(width=0),
                         fill="tonexty",
-                        fillcolor=hex_to_rgba(color, 0.22),
+                        fillcolor=fillcolor,
                         hoverinfo="skip",
                         visible=visible, showlegend=False,
                     ))
@@ -513,7 +576,7 @@ def _plot_dropdown(
         fig.add_trace(go.Scatter(
             x=sub[date_col], y=sub[value_col],
             mode="lines",
-            line=dict(color=color, width=2),
+            line=dict(color=color, width=line_width),
             visible=visible,
             showlegend=False,
         ))
@@ -524,7 +587,7 @@ def _plot_dropdown(
             fig.add_trace(go.Scatter(
                 x=fsub[date_col], y=fsub[forecast_value_col],
                 mode="lines",
-                line=dict(color=color, width=2, dash="dash"),
+                line=dict(color=color, width=line_width, dash="dash"),
                 visible=visible,
                 showlegend=False,
             ))
@@ -545,8 +608,10 @@ def _plot_dropdown(
 
     # global events
     if ev_all is not None:
-        _add_event_lines_and_labels(fig, ev_all, date_col=date_col,
-                                    ev_color=ev_color, stagger=ev_stagger)
+        _add_event_lines_and_labels(
+            fig, ev_all, date_col=date_col,
+            ev_color=ev_color, stagger=ev_stagger
+        )
 
     # dropdown
     buttons = []

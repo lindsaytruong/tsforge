@@ -6,19 +6,50 @@ THEMES = {
     # =====================================================
     # FORECAST ACADEMY DEFAULT (BRAND)
     # =====================================================
+    # "fa": {
+    #     "font": "Source Sans Pro",
+    #     "font_size": 14,
+    #     "background": "white",
+    #     "grid_color": "#E7E9EF",
+    #     "axis_color": "#3A3A3A",
+
+    #     "title_color": "#2C32D5",
+    #     "subtitle_color": "#444444",
+
+    #     "line_width": 2.3,
+    #     "pi_opacity": 0.20,
+
+    #     "legend_bg": "rgba(255,255,255,0.80)",
+    #     "legend_border": "rgba(180,180,180,0.35)",
+    #     "legend_font_color": "#222222",
+    #     "legend_position": "top right",
+    #     "legend_font_size": 12,
+    # },
+
     "fa": {
         "font": "Source Sans Pro",
         "font_size": 14,
         "background": "white",
-        "grid_color": "#E7E9EF",
-        "axis_color": "#3A3A3A",
 
+        # Axes & grid
+        "grid_color": "rgba(0,0,0,0.06)",
+        "axis_color": "#4A4E69",
+
+        # Titles
         "title_color": "#2C32D5",
         "subtitle_color": "#444444",
 
+        # Line + PI style
         "line_width": 2.3,
+        "line_color": "#2C32D5",    # used when there's only one series / facet
         "pi_opacity": 0.20,
+        # ❌ REMOVE this line:
+        # "pi_color": "rgba(44,50,213,0.18)",
 
+        # Accent (anomalies, highlights)
+        "accent_color": "#E63946",
+
+        # Legend
         "legend_bg": "rgba(255,255,255,0.80)",
         "legend_border": "rgba(180,180,180,0.35)",
         "legend_font_color": "#222222",

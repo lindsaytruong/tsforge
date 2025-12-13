@@ -1,8 +1,6 @@
 import pandas as pd
 from typing import Union, List, Dict
 
-import pandas as pd
-from typing import Union, List, Dict
 
 def summarize_by_time(
     df: pd.DataFrame,
