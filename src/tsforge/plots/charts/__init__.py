@@ -7,6 +7,7 @@ from .plot_seasonal import plot_seasonal
 from .plot_distribution import plot_distribution
 from .plot_intermittancy import plot_intermittency
 from .plot_decomposition import plot_decomposition
+from .plot_strength import plot_strength
 
 __all__ = [
     "plot_timeseries",
@@ -14,4 +15,5 @@ __all__ = [
     "plot_distribution",
     "plot_intermittancy",
     "plot_decomposition",
+    "plot_strength",
 ]
