@@ -18,7 +18,8 @@ def apply_smoothing(df: pd.DataFrame, id_col: str, value_col: str, window: int):
           .transform(lambda s: s.rolling(window, min_periods=1).mean())
     )
 
-    df["_smooth"] = smooth_vals
+    # Replace value_col with smoothed values so plotting uses them
+    df[value_col] = smooth_vals
     return df
 
 
