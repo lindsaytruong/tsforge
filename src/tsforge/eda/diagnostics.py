@@ -142,11 +142,13 @@ def datetime_diagnostics(
     df: pd.DataFrame,
     id_col: str,
     date_col: str,
+    target_col: str = None,
 ) -> pd.DataFrame:
-    """Datetime diagnostics - timeline quality and structure only.
+    """Datetime diagnostics - timeline quality and structure.
     
     Returns information about temporal structure, gaps, and frequency patterns.
-    Does NOT include target variable statistics (use target_diagnostics for that).
+    
+    If target_col is provided, also returns seasonal peak patterns (peak_month, peak_quarter).
     """
     
     # Convert to datetime once
@@ -179,7 +181,7 @@ def datetime_diagnostics(
     
     df['_diff_days'] = df.groupby(id_col, sort=False)[date_col].diff().dt.total_seconds() / 86400
     
-    # Only median, mean, stdev (dropped min/max/q1/q3)
+    # Only median, mean, stdev
     diff_agg = df.groupby(id_col, sort=False)['_diff_days'].agg([
         ('diff_median_days', 'median'),
         ('diff_mean_days', 'mean'),
@@ -240,5 +242,26 @@ def datetime_diagnostics(
         [365, 52, 12, 4, 1],
         default=np.nan
     )
+    
+    # ============================================
+    # SEASONAL PEAKS (IF TARGET PROVIDED)
+    # ============================================
+    
+    if target_col is not None:
+        # Extract temporal features
+        df['_month'] = df[date_col].dt.month
+        df['_quarter'] = df[date_col].dt.quarter
+        
+        # Peak month
+        month_means = df.groupby([id_col, '_month'], sort=False)[target_col].mean().reset_index()
+        idx_max_month = month_means.groupby(id_col, sort=False)[target_col].idxmax()
+        peak_months = month_means.loc[idx_max_month].set_index(id_col)['_month']
+        result['peak_month'] = peak_months
+        
+        # Peak quarter
+        quarter_means = df.groupby([id_col, '_quarter'], sort=False)[target_col].mean().reset_index()
+        idx_max_quarter = quarter_means.groupby(id_col, sort=False)[target_col].idxmax()
+        peak_quarters = quarter_means.loc[idx_max_quarter].set_index(id_col)['_quarter']
+        result['peak_quarter'] = peak_quarters
     
     return result.reset_index()
