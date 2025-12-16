@@ -142,81 +142,161 @@ def datetime_diagnostics(
     df: pd.DataFrame,
     id_col: str,
     date_col: str,
-    target_col: str = None,  # Optional target for seasonal analysis
+    target_col: str = None,
 ) -> pd.DataFrame:
-    """Comprehensive time series diagnostics per unique_id for forecasting.
-
-    Returns key information about temporal structure, gaps, and frequency patterns
-    that inform forecasting approach and data quality.
-
-    If target_col is provided, also returns seasonal pattern information.
-    """
-
-    def infer_frequency(dates):
-        """Infer frequency and return as string"""
-        freq = pd.infer_freq(dates.sort_values())
-        return freq if freq else "irregular"
-
-    def count_gaps(dates):
-        """Count number of gaps in expected regular sequence"""
-        dates_sorted = dates.sort_values()
-        if len(dates_sorted) < 2:
-            return 0
-        freq = pd.infer_freq(dates_sorted)
-        if freq is None:
-            return np.nan
-        expected_range = pd.date_range(dates_sorted.min(), dates_sorted.max(), freq=freq)
-        return len(expected_range) - len(dates_sorted)
-
-    def span_days(dates):
-        """Total time span in days"""
-        return (dates.max() - dates.min()).total_seconds() / 86400
-
-    def obs_per_year(dates):
-        """Approximate observations per year"""
-        span = (dates.max() - dates.min()).total_seconds() / 86400
-        if span == 0:
-            return np.nan
-        return (len(dates) / span) * 365.25
-
-    def has_duplicates(dates):
-        """Check if there are duplicate timestamps"""
-        return dates.duplicated().any()
-
-    # Base aggregations that always run
-    base_agg = {
-        # Basic temporal boundaries
-        "start_date": (date_col, "min"),
-        "end_date": (date_col, "max"),
-        "n_obs": (date_col, "count"),
-        "span_days": (date_col, span_days),
-        # Frequency detection
-        "inferred_freq": (date_col, infer_frequency),
-        "obs_per_year": (date_col, obs_per_year),
-        # Gap analysis
-        "n_gaps": (date_col, count_gaps),
-        "pct_missing": (date_col, pct_missing_dates),
-        # Data quality flags
-        "has_duplicates": (date_col, has_duplicates),
+    """Fully optimized datetime diagnostics - no .apply() calls."""
+    
+    # Convert to datetime once
+    df = df.copy()
+    df[date_col] = pd.to_datetime(df[date_col])
+    
+    # Sort by id and date once
+    df = df.sort_values([id_col, date_col])
+    
+    # ============================================
+    # BASIC DATE METRICS (VECTORIZED)
+    # ============================================
+    
+    basic_agg = {
+        'start_date': (date_col, 'min'),
+        'end_date': (date_col, 'max'),
+        'n_obs': (date_col, 'count'),
     }
-    result = df.groupby(id_col).agg(**base_agg)
-
+    result = df.groupby(id_col, sort=False).agg(**basic_agg)
+    
+    # Span in days (vectorized)
+    result['span_days'] = (result['end_date'] - result['start_date']).dt.total_seconds() / 86400
+    
+    # Obs per year (vectorized)
+    result['obs_per_year'] = np.where(
+        result['span_days'] > 0,
+        (result['n_obs'] / result['span_days']) * 365.25,
+        np.nan
+    )
+    
+    # ============================================
+    # DIFF STATISTICS (VECTORIZED)
+    # ============================================
+    
+    # Compute diffs within each group (single pass)
+    df['_diff_days'] = df.groupby(id_col, sort=False)[date_col].diff().dt.total_seconds() / 86400
+    
+    # All diff stats in one aggregation
+    diff_agg = df.groupby(id_col, sort=False)['_diff_days'].agg([
+        ('diff_min_days', 'min'),
+        ('diff_q1_days', lambda x: x.quantile(0.25)),
+        ('diff_median_days', 'median'),
+        ('diff_mean_days', 'mean'),
+        ('diff_q3_days', lambda x: x.quantile(0.75)),
+        ('diff_max_days', 'max'),
+        ('diff_stdev_days', 'std'),
+    ])
+    
+    result = result.join(diff_agg)
+    
+    # ============================================
+    # DUPLICATES (VECTORIZED - NO APPLY)
+    # ============================================
+    
+    # Count occurrences of each (id, date) pair
+    dup_counts = df.groupby([id_col, date_col], sort=False).size()
+    
+    # Any count > 1 means duplicates exist
+    has_dups = (dup_counts > 1).groupby(level=0).any().rename('has_duplicates')
+    result = result.join(has_dups).fillna({'has_duplicates': False})
+    
+    # ============================================
+    # FREQUENCY INFERENCE (SAMPLE-BASED) - FIXED
+    # ============================================
+    
+    # Sample one ID to get global frequency pattern
+    sample_id = df[id_col].iloc[0]
+    sample_dates = df[df[id_col] == sample_id][date_col].sort_values()
+    global_freq = pd.infer_freq(sample_dates)
+    
+    if global_freq:
+        result['inferred_freq'] = global_freq
+        
+        # FIXED: Convert frequency string to timedelta safely
+        try:
+            # Try direct conversion first
+            freq_timedelta = pd.Timedelta(global_freq)
+        except (ValueError, TypeError):
+            # Fallback: Create a date range and measure the difference
+            test_range = pd.date_range(start='2020-01-01', periods=2, freq=global_freq)
+            freq_timedelta = test_range[1] - test_range[0]
+        
+        # Vectorized gap calculation
+        expected_counts = ((result['end_date'] - result['start_date']) / freq_timedelta + 1).round()
+        result['n_gaps'] = (expected_counts - result['n_obs']).fillna(0).astype('Int64')
+        result['pct_missing'] = np.where(
+            expected_counts > 0,
+            (result['n_gaps'] / expected_counts * 100).round(2),
+            0.0
+        )
+    else:
+        # Irregular frequency
+        result['inferred_freq'] = 'irregular'
+        result['n_gaps'] = pd.NA
+        result['pct_missing'] = np.nan
+    
+    # ============================================
+    # SEASONAL PERIOD (VECTORIZED)
+    # ============================================
+    
+    # Vectorized conditional logic
+    obs_yr = result['obs_per_year']
+    result['seasonal_period'] = np.select(
+        [
+            (obs_yr >= 360) & (obs_yr <= 370),  # Daily
+            (obs_yr >= 50) & (obs_yr <= 54),    # Weekly
+            (obs_yr >= 11) & (obs_yr <= 13),    # Monthly
+            (obs_yr >= 3) & (obs_yr <= 5),      # Quarterly
+            obs_yr.notna()                      # Annual/other
+        ],
+        [365, 52, 12, 4, 1],
+        default=np.nan
+    )
+    
+    # ============================================
+    # TARGET STATISTICS (IF PROVIDED)
+    # ============================================
+    
     if target_col is not None:
-
-        def _seasonal_summary(group):
-            if group.empty or group[target_col].dropna().empty:
-                return pd.Series({"peak_month": np.nan, "peak_quarter": np.nan})
-
-            month_means = group.groupby(group[date_col].dt.month)[target_col].mean()
-            quarter_means = group.groupby(group[date_col].dt.quarter)[target_col].mean()
-
-            return pd.Series(
-                {
-                    "peak_month": month_means.idxmax() if not month_means.empty else np.nan,
-                    "peak_quarter": quarter_means.idxmax() if not quarter_means.empty else np.nan,
-                }
-            )
-
-        seasonal_stats = df.groupby(id_col).apply(_seasonal_summary)
-        result = result.merge(seasonal_stats, left_index=True, right_index=True, how="left")
-    return result
+        # Target summary stats
+        target_agg = df.groupby(id_col, sort=False)[target_col].agg([
+            ('target_min', 'min'),
+            ('target_q1', lambda x: x.quantile(0.25)),
+            ('target_median', 'median'),
+            ('target_mean', 'mean'),
+            ('target_q3', lambda x: x.quantile(0.75)),
+            ('target_max', 'max'),
+            ('target_stdev', 'std'),
+        ])
+        result = result.join(target_agg)
+        
+        # ============================================
+        # SEASONAL PEAKS (VECTORIZED - NO APPLY)
+        # ============================================
+        
+        # Extract temporal features once
+        df['_month'] = df[date_col].dt.month
+        df['_quarter'] = df[date_col].dt.quarter
+        
+        # Compute mean by (id, month)
+        month_means = df.groupby([id_col, '_month'], sort=False)[target_col].mean().reset_index()
+        
+        # Find row index of max value per ID
+        idx_max_month = month_means.groupby(id_col, sort=False)[target_col].idxmax()
+        
+        # Extract the month value at those indices
+        peak_months = month_means.loc[idx_max_month].set_index(id_col)['_month']
+        result['peak_month'] = peak_months
+        
+        # Same for quarters
+        quarter_means = df.groupby([id_col, '_quarter'], sort=False)[target_col].mean().reset_index()
+        idx_max_quarter = quarter_means.groupby(id_col, sort=False)[target_col].idxmax()
+        peak_quarters = quarter_means.loc[idx_max_quarter].set_index(id_col)['_quarter']
+        result['peak_quarter'] = peak_quarters
+    
+    return result.reset_index()
