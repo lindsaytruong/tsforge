@@ -145,6 +145,8 @@ def plot_timeseries(
     # 4) Smoothing
     # ------------------------------------------------------------------
     df_sub = apply_smoothing(df_sub, id_col, value_col, smooth_window)
+    # Define smooth_col for plotting functions 
+    smooth_col = "_smooth" if smooth_window and "_smooth" in df_sub.columns else None
 
     # ------------------------------------------------------------------
     # 5) Events + anomalies (normalize & merge)
@@ -191,6 +193,8 @@ def plot_timeseries(
             events_config=events_config,
             anomalies_config=anomalies_config,
             theme=theme,
+            smooth_col=smooth_col,         
+            smooth_window=smooth_window,    
         )
     elif mode == "facet":
         fig = _plot_facet(
@@ -210,6 +214,8 @@ def plot_timeseries(
             anomalies_config=anomalies_config,
             wrap=wrap,
             theme=theme,
+            smooth_col=smooth_col,         
+            smooth_window=smooth_window, 
         )
 
     elif mode == "dropdown":
@@ -229,6 +235,8 @@ def plot_timeseries(
             events_config=events_config,
             anomalies_config=anomalies_config,
             theme=theme,
+            smooth_col=smooth_col,         
+            smooth_window=smooth_window, 
         )
 
     else:
@@ -297,6 +305,8 @@ def _plot_overlay(
     ev_all, an_df,
     events_config, anomalies_config,
     theme,
+    smooth_col=None,       
+    smooth_window=None,     
 ):
     fig = go.Figure()
 
@@ -368,7 +378,16 @@ def _plot_overlay(
             name=str(uid),
             line=dict(color=color, width=line_width),
         ))
-
+        # ---- smoothed line 
+        if smooth_col and smooth_col in sub.columns:
+            fig.add_trace(go.Scatter(
+                x=sub[date_col],
+                y=sub[smooth_col],
+                mode="lines",
+                name=f"{uid} (MA{smooth_window})",
+                line=dict(color=color, width=line_width + 0.5, dash="dot"),
+                opacity=0.8,
+            ))
         # ---- forecast
         if fsub is not None:
             fig.add_trace(go.Scatter(
@@ -410,6 +429,8 @@ def _plot_facet(
     events_config, anomalies_config,
     wrap,
     theme,
+    smooth_col=None,       
+    smooth_window=None,   
 ):
     n = len(ids)
     fig = make_subplots(
@@ -474,6 +495,15 @@ def _plot_facet(
             line=dict(color=color, width=line_width),
         ), row=r, col=1)
 
+        # smoothed 
+        if smooth_col and smooth_col in sub.columns:
+            fig.add_trace(go.Scatter(
+                x=sub[date_col], y=sub[smooth_col],
+                mode="lines",
+                name=f"{uid} (MA{smooth_window})",
+                line=dict(color=color, width=line_width + 0.5, dash="dot"),
+                opacity=0.8,
+            ), row=r, col=1)
         # forecast
         if fsub is not None:
             fig.add_trace(go.Scatter(
@@ -513,6 +543,8 @@ def _plot_dropdown(
     ev_all, an_df,
     events_config, anomalies_config,
     theme,
+    smooth_col=None,       
+    smooth_window=None,   
 ):
     fig = go.Figure()
     trace_map = {uid: [] for uid in ids}
@@ -581,6 +613,18 @@ def _plot_dropdown(
             showlegend=False,
         ))
         trace_map[uid].append(len(fig.data) - 1)
+
+        # smoothed 
+        if smooth_col and smooth_col in sub.columns:
+            fig.add_trace(go.Scatter(
+                x=sub[date_col], y=sub[smooth_col],
+                mode="lines",
+                line=dict(color=color, width=line_width + 0.5, dash="dot"),
+                visible=visible,
+                opacity=0.8,
+                showlegend=False,
+            ))
+            trace_map[uid].append(len(fig.data) - 1)
 
         # forecast
         if fsub is not None:
